@@ -1,0 +1,70 @@
+name: Phase 1 checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: namma
+          POSTGRES_PASSWORD: ci-database-password-not-for-real-use
+          POSTGRES_DB: namma_ride
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U namma -d namma_ride"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_PASSWORD: ci-database-password-not-for-real-use
+      ADMIN_API_KEY: ci-admin-key-not-for-real-use-minimum-32-chars
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/init_env.py && docker compose config --quiet
+        working-directory: .
+      - run: pip install -e '.[dev]'
+      - run: ruff check app tests migrations scripts ../scripts/init_env.py
+      - run: pytest -q
+      - run: alembic upgrade head
+      - run: python scripts/check_database.py
+      - run: alembic downgrade base && alembic upgrade head
+  admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+      - run: npm ci
+      - run: npm run build
+  flutter:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [customer, driver]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
