@@ -1,8 +1,8 @@
 # Phases
 
-1. Foundation: apps, API, database migration, local admin summary, setup and checks.
-2. Onboarding: invite-only authentication, driver approval, individual admin roles, enforce 100 customer/10 driver caps, consent and defined Madurantakam service boundary.
-3. Rides: booking, fares, atomic dispatch, acceptance, state transitions, cancellation and audit trail.
-4. Supervised pilot: consent-based tracking, notifications, emergency/support flows, HTTPS, backup/restore and capacity testing.
+1. **Foundation (complete):** monorepo apps, API, PostgreSQL, migrations, private local configuration and CI.
+2. **Authentication and ride booking (current):** secure test OTP, JWT roles, enforced enrollment caps, driver approval, booking/fare estimate, atomic accept/reject, lifecycle/cancellation, mobile integration and admin management.
+3. **Supervised pilot readiness:** invite issuance, SMS provider, consent, geographic Madurantakam boundary, server-calculated routing, audit history, notifications, HTTPS deployment and backup/restore drills.
+4. **Operational hardening:** consent-based live tracking, support/emergency flows, observability, capacity testing and production signing after legal/operational review.
 
-Phase 1 has no real user data, ride booking, payments or dispatch. Pilot limits are metadata until enrollment is implemented.
+Phase 2 remains private test software. It does not enable payments, public ride operations, production SMS or live tracking. Bike Taxi is demo-only.

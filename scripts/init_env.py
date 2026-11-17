@@ -12,6 +12,9 @@ def main():
         "POSTGRES_DB=namma_ride\nPOSTGRES_USER=namma\n"
         f"POSTGRES_PASSWORD={secrets.token_urlsafe(32)}\n"
         f"ADMIN_API_KEY={secrets.token_urlsafe(48)}\n"
+        f"JWT_SECRET={secrets.token_urlsafe(48)}\n"
+        f"OTP_PEPPER={secrets.token_urlsafe(48)}\n"
+        "EXPOSE_TEST_OTP=false\n"
         "API_BIND_HOST=127.0.0.1\n"
     )
     try:

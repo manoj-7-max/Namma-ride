@@ -1,27 +1,24 @@
-# Phase 1 repository verification — 16 November 2026
+# Phase 2 verification — 17 November 2026
 
-The selected GitHub repository was empty. A minimal README established the main branch; the full starter is proposed separately for review.
+## Passed locally
 
-## Passed on the PR source
+- Backend: Ruff format and lint; 9 pytest cases covering OTP expiry/attempt/single-use behavior, role isolation, driver approval, pilot caps/configuration, booking/fare, accept/reject, cancellation, invalid transitions, full lifecycle and customer-visible driver details.
+- Customer Flutter: analysis with no issues and 2 widget tests, including mocked OTP registration/login and booking.
+- Driver Flutter: analysis with no issues and 2 widget tests, including the admin-approval gate.
+- Admin Dashboard: clean TypeScript/Vite production build.
+- Docker Compose configuration interpolation with the new JWT and OTP settings.
+- Backend container image built successfully as non-root using the approved CA bundle as an ephemeral secret.
+- PostgreSQL container initialized and became healthy.
+- Source diff whitespace check passed.
 
-- Eight backend tests: liveness, pilot location/targets, private-test/demo-only mode, unauthorized admin rejection, sanitized DB failures, secret redaction and rejection of weak/example admin credentials.
-- Ruff lint and formatting, Python compilation, shell syntax and Compose configuration validation.
-- Random credential setup: exclusive creation, owner-only 0600 permissions and refusal to overwrite an existing .env.
-- Customer Flutter: analysis without issues and three widget tests passing, including the Bike Taxi demo notice, URL validation, successful API response and server-error handling.
-- Driver Flutter: analysis without issues and the same three widget tests passing.
-- React/TypeScript Admin Dashboard: npm ci and production build.
-- Real PostgreSQL 16: initial migration, database-backed readiness and authenticated summary, downgrade to base, re-upgrade and repeat smoke check. No customer/driver records inserted.
+The repository CI repeats these checks and runs Alembic upgrade, database/JWT smoke check, downgrade to base and re-upgrade against an isolated PostgreSQL service.
 
-- Fresh backend Docker image built using the optional approved CA secret with TLS verification enabled. Full Compose API/PostgreSQL stack became healthy. Actual HTTP liveness, readiness, demo-only pilot flags, unauthorized rejection (401) and authorized zero-member summary all passed.
+## Environment limitations
 
-## Toolchain and limits
+The workspace filesystem filled while Docker created the final API container layer. The image itself built, and PostgreSQL became healthy, but a full Compose API startup plus the local Alembic rollback/reapply smoke check could not finish here. CI is configured to perform that database sequence on a clean runner. This is an execution-environment storage blocker, not a failing source check.
 
-Python 3.12, Node.js 24, Flutter 3.50.0 and Dart 3.14 were available for local validation. CI uses Python 3.12, Node 22, Flutter 3.50.0 and an isolated PostgreSQL service. Remote CI results are separate from these local results.
-
-Native Android SDK/full JDK tools from an earlier temporary build session were no longer available, so updated APKs were not built here. iOS requires macOS/Xcode. No physical device, Android emulator, browser end-to-end test or 100/10 load test was run. The installed Starlette TestClient emits a non-failing httpx deprecation warning.
-
-Initial frontend checks hit the workspace disk limit. Obsolete prototype containers and build caches were removed; affected checks were rerun successfully. No credentials, APKs, local environment files, installed dependencies or caches are included in the commit.
+The installed Starlette compatibility shim emits one non-failing TestClient deprecation warning. No physical Android device/emulator, browser end-to-end test, production SMS, GPS/map flow or 100/10 concurrent load test was run.
 
 ## Product boundary
 
-These are working connection/summary starters. There is no identity/onboarding, booking, dispatch, payments, public ride operation or live tracking service. Bike Taxi is demo-only. The 100-customer/10-driver numbers are pilot targets, not enforced admission limits or a capacity claim.
+Phase 2 is a private test MVP. OTP delivery is deliberately test-only, distance is user-entered, fares are estimates, and there is no payment processing or public ride operation. Bike Taxi is demo-only.

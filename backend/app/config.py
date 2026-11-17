@@ -14,9 +14,14 @@ class Settings(BaseSettings):
     db_user: str = "namma"
     db_password: SecretStr = Field(min_length=16)
     admin_api_key: SecretStr = Field(min_length=32)
+    jwt_secret: SecretStr = Field(min_length=32)
+    otp_pepper: SecretStr = Field(min_length=32)
+    expose_test_otp: bool = False
+    otp_ttl_seconds: int = Field(default=300, ge=60, le=900)
+    jwt_ttl_minutes: int = Field(default=720, ge=15, le=1440)
     cors_origins: list[str] = ["http://localhost:5173"]
 
-    @field_validator("db_password", "admin_api_key")
+    @field_validator("db_password", "admin_api_key", "jwt_secret", "otp_pepper")
     @classmethod
     def reject_example_secrets(cls, value: SecretStr) -> SecretStr:
         if value.get_secret_value().startswith("replace-"):

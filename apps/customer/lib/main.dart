@@ -1,12 +1,12 @@
-import 'dart:convert';
-
-import 'package:material_ui/material_ui.dart';
 import 'package:http/http.dart' as http;
+import 'package:material_ui/material_ui.dart';
 
-void main() => runApp(const NammaRideApp());
+import 'api.dart';
 
-class NammaRideApp extends StatelessWidget {
-  const NammaRideApp({super.key, this.client});
+void main() => runApp(const NammaRideCustomerApp());
+
+class NammaRideCustomerApp extends StatelessWidget {
+  const NammaRideCustomerApp({super.key, this.client});
   final http.Client? client;
 
   @override
@@ -14,221 +14,263 @@ class NammaRideApp extends StatelessWidget {
     title: 'Namma Ride Customer',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF166547)),
-      scaffoldBackgroundColor: const Color(0xFFF4F7F4),
+      colorSchemeSeed: const Color(0xFF166547),
       useMaterial3: true,
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-      ),
     ),
-    home: PilotScreen(client: client),
+    home: CustomerHome(client: client),
   );
 }
 
-class PilotScreen extends StatefulWidget {
-  const PilotScreen({super.key, this.client});
+class CustomerHome extends StatefulWidget {
+  const CustomerHome({super.key, this.client});
   final http.Client? client;
-
   @override
-  State<PilotScreen> createState() => _PilotScreenState();
+  State<CustomerHome> createState() => _CustomerHomeState();
 }
 
-class _PilotScreenState extends State<PilotScreen> {
-  final formKey = GlobalKey<FormState>();
+class _CustomerHomeState extends State<CustomerHome> {
   final server = TextEditingController(
     text: const String.fromEnvironment('API_BASE_URL'),
   );
-  late final http.Client client = widget.client ?? http.Client();
-  String status = 'Enter the test server address to connect.';
+  final phone = TextEditingController();
+  final name = TextEditingController();
+  final otp = TextEditingController();
+  final pickup = TextEditingController();
+  final dropoff = TextEditingController();
+  final distance = TextEditingController();
+  late final http.Client httpClient = widget.client ?? http.Client();
+  CustomerApi? api;
+  int? challengeId;
+  String? testOtp;
+  String? userName;
+  List<Map<String, dynamic>> rides = [];
+  String message = 'Register or sign in with your phone number.';
   bool busy = false;
-  bool connected = false;
 
   @override
   void dispose() {
-    server.dispose();
-    if (widget.client == null) client.close();
+    for (final controller in [
+      server,
+      phone,
+      name,
+      otp,
+      pickup,
+      dropoff,
+      distance,
+    ]) {
+      controller.dispose();
+    }
+    if (widget.client == null) httpClient.close();
     super.dispose();
   }
 
-  String? validateServer(String? value) {
-    final uri = Uri.tryParse((value ?? '').trim());
-    if (uri == null ||
-        !['http', 'https'].contains(uri.scheme) ||
-        uri.host.isEmpty ||
-        uri.userInfo.isNotEmpty ||
-        uri.hasQuery ||
-        uri.hasFragment) {
-      return 'Enter an HTTP or HTTPS server URL, without credentials.';
-    }
-    return null;
+  bool get loggedIn => api?.token != null;
+  String? serverError() {
+    final uri = Uri.tryParse(server.text.trim());
+    return uri == null ||
+            !['http', 'https'].contains(uri.scheme) ||
+            uri.host.isEmpty
+        ? 'Enter a valid API URL.'
+        : null;
   }
 
-  Future<void> checkApi() async {
-    if (!formKey.currentState!.validate()) return;
-    FocusScope.of(context).unfocus();
-    setState(() {
-      busy = true;
-      connected = false;
-      status = 'Connecting to your pilot server…';
-    });
-    String message;
-    bool success = false;
+  Future<void> run(Future<void> Function() action) async {
+    setState(() => busy = true);
     try {
-      final base = server.text.trim().replaceFirst(RegExp(r'/+$'), '');
-      final response = await client
-          .get(Uri.parse('$base/api/v1/pilot'))
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200) {
-        message =
-            'Server returned ${response.statusCode}. Check the API address.';
-      } else {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        if (data['name'] != 'Namma Ride' ||
-            data['location'] != 'Madurantakam' ||
-            data['customer_limit'] != 100 ||
-            data['driver_limit'] != 10) {
-          throw const FormatException('Unexpected pilot configuration');
-        }
-        message = 'Connected to the Madurantakam pilot.';
-        success = true;
-      }
-    } on FormatException {
-      message =
-          'This server did not return the expected Namma Ride pilot data.';
+      await action();
+    } on ApiException catch (error) {
+      setState(() => message = error.message);
     } catch (_) {
-      message = 'Cannot reach the server. Check the address, Wi-Fi and backend. Localhost on a phone means the phone itself.';
+      setState(() => message = 'Cannot reach the private test server.');
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
-    if (!mounted) return;
-    setState(() {
-      status = message;
-      connected = success;
-      busy = false;
-    });
   }
+
+  Future<void> requestOtp() => run(() async {
+    final error = serverError();
+    if (error != null ||
+        phone.text.trim().isEmpty ||
+        name.text.trim().isEmpty) {
+      setState(() => message = error ?? 'Phone and name are required.');
+      return;
+    }
+    api = CustomerApi(server.text, httpClient);
+    final result = await api!.requestOtp(phone: phone.text, name: name.text);
+    setState(() {
+      challengeId = result['challenge_id'] as int;
+      testOtp = result['test_otp'] as String?;
+      message = testOtp == null
+          ? 'OTP requested. Ask the private-test operator for the code.'
+          : 'Test OTP: $testOtp';
+    });
+  });
+
+  Future<void> verifyOtp() => run(() async {
+    if (challengeId == null || otp.text.length != 6) {
+      setState(() => message = 'Enter the six-digit OTP.');
+      return;
+    }
+    final result = await api!.verifyOtp(
+      challengeId: challengeId!,
+      phone: phone.text,
+      otp: otp.text,
+    );
+    setState(() {
+      userName =
+          (result['user'] as Map<String, dynamic>)['display_name'] as String;
+      message = 'Signed in. You can book a demo ride.';
+    });
+    await refresh();
+  });
+
+  Future<void> refresh() async {
+    final result = await api!.rides();
+    if (mounted) setState(() => rides = result);
+  }
+
+  Future<void> book() => run(() async {
+    final km = double.tryParse(distance.text);
+    if (pickup.text.trim().length < 3 ||
+        dropoff.text.trim().length < 3 ||
+        km == null ||
+        km <= 0) {
+      setState(
+        () => message = 'Enter pickup, drop-off and a positive demo distance.',
+      );
+      return;
+    }
+    final ride = await api!.book(
+      pickup: pickup.text,
+      dropoff: dropoff.text,
+      distance: km,
+    );
+    setState(
+      () => message =
+          'Ride #${ride['id']} requested. Estimated fare ₹${ride['estimated_fare_rupees']} (demo only).',
+    );
+    await refresh();
+  });
+
+  Future<void> cancel(int id) => run(() async {
+    await api!.cancel(id);
+    setState(() => message = 'Ride #$id cancelled.');
+    await refresh();
+  });
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Namma Ride · Customer')),
     body: SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Chip(
-                  avatar: Icon(Icons.science_outlined, size: 18),
-                  label: Text('PRIVATE TEST · PHASE 1'),
-                ),
-                const SizedBox(height: 20),
-                const Icon(
-                  Icons.local_taxi_outlined,
-                  size: 54,
-                  color: Color(0xFF166547),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Vanakkam, Madurantakam!',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Your local ride app, starting with a small private pilot.',
-                ),
-                const SizedBox(height: 24),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Pilot community',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text('100 customers · 10 drivers'),
-                        const SizedBox(height: 8),
-                        const Text('Madurantakam, Tamil Nadu'),
-                        const SizedBox(height: 8),
-                        const Text('Bike Taxi · Demo only'),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Connect to the test server',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 12),
-                Form(
-                  key: formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      TextFormField(
-                        controller: server,
-                        validator: validateServer,
-                        enabled: !busy,
-                        keyboardType: TextInputType.url,
-                        autocorrect: false,
-                        decoration: const InputDecoration(
-                          labelText: 'API server URL',
-                          hintText: 'https://your-test-server.example',
-                          helperText: 'Use HTTPS for a hosted server. Address is kept for this session.',
-                        ),
-                        onFieldSubmitted: (_) {
-                          if (!busy) checkApi();
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: busy ? null : checkApi,
-                        icon: busy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.wifi_tethering),
-                        label: Text(
-                          busy ? 'Connecting…' : 'Check API connection',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: connected ? const Color(0xFF166547) : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                const Divider(),
-                const SizedBox(height: 12),
-                const Text(
-                  'Foundation test build',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'No public ride operations or real payments. Bike Taxi is demo-only. Booking, dispatch, sign-in and live tracking are not enabled. This app verifies the pilot API connection.',
-                ),
-              ],
-            ),
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Chip(label: Text('PRIVATE TEST · PHASE 2')),
+          const Text('Madurantakam, Tamil Nadu · Bike Taxi demo-only'),
+          const SizedBox(height: 16),
+          if (!loggedIn) ...authForm() else ...rideDashboard(),
+          const SizedBox(height: 16),
+          Text(message, key: const Key('message')),
+          const SizedBox(height: 20),
+          const Text(
+            'No real payments or public ride operations.',
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
-        ),
+        ],
       ),
     ),
   );
+
+  List<Widget> authForm() => [
+    TextField(
+      controller: server,
+      decoration: const InputDecoration(labelText: 'Private API URL'),
+    ),
+    const SizedBox(height: 10),
+    TextField(
+      controller: phone,
+      keyboardType: TextInputType.phone,
+      decoration: const InputDecoration(labelText: 'Phone number'),
+    ),
+    const SizedBox(height: 10),
+    TextField(
+      controller: name,
+      decoration: const InputDecoration(
+        labelText: 'Name (required for registration)',
+      ),
+    ),
+    const SizedBox(height: 10),
+    FilledButton(
+      onPressed: busy ? null : requestOtp,
+      child: const Text('Request test OTP'),
+    ),
+    if (challengeId != null) ...[
+      const SizedBox(height: 10),
+      TextField(
+        controller: otp,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Six-digit OTP'),
+      ),
+      const SizedBox(height: 10),
+      FilledButton(
+        onPressed: busy ? null : verifyOtp,
+        child: const Text('Verify and sign in'),
+      ),
+    ],
+  ];
+
+  List<Widget> rideDashboard() => [
+    Text(
+      'Vanakkam, $userName!',
+      style: Theme.of(context).textTheme.headlineSmall,
+    ),
+    const SizedBox(height: 12),
+    TextField(
+      controller: pickup,
+      decoration: const InputDecoration(labelText: 'Pickup'),
+    ),
+    const SizedBox(height: 10),
+    TextField(
+      controller: dropoff,
+      decoration: const InputDecoration(labelText: 'Drop-off'),
+    ),
+    const SizedBox(height: 10),
+    TextField(
+      controller: distance,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(
+        labelText: 'Estimated distance (km)',
+        helperText: 'Used only for a demo fare estimate',
+      ),
+    ),
+    const SizedBox(height: 10),
+    FilledButton(
+      onPressed: busy ? null : book,
+      child: const Text('Request demo ride'),
+    ),
+    TextButton(
+      onPressed: busy ? null : () => run(refresh),
+      child: const Text('Refresh ride status'),
+    ),
+    ...rides.map(rideCard),
+  ];
+
+  Widget rideCard(Map<String, dynamic> ride) {
+    final driver = ride['driver'] as Map<String, dynamic>?;
+    return Card(
+      child: ListTile(
+        title: Text('#${ride['id']} · ${ride['status']}'),
+        subtitle: Text(
+          '${ride['pickup']} → ${ride['dropoff']}\nDemo estimate ₹${ride['estimated_fare_rupees']}${driver == null ? '\nWaiting for a driver' : '\nDriver: ${driver['display_name']} · ${driver['vehicle_number'] ?? 'vehicle pending'} · ${driver['phone']}'}',
+        ),
+        isThreeLine: true,
+        trailing: ['requested', 'accepted'].contains(ride['status'])
+            ? TextButton(
+                onPressed: busy ? null : () => cancel(ride['id'] as int),
+                child: const Text('Cancel'),
+              )
+            : null,
+      ),
+    );
+  }
 }

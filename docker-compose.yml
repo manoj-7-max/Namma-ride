@@ -21,6 +21,9 @@ services:
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      OTP_PEPPER: ${OTP_PEPPER:?Set OTP_PEPPER}
+      EXPOSE_TEST_OTP: ${EXPOSE_TEST_OTP:-false}
       CORS_ORIGINS: '["http://localhost:5173"]'
     ports: ["${API_BIND_HOST:-127.0.0.1}:8000:8000"]
     depends_on:
