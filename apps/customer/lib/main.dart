@@ -46,7 +46,6 @@ class _CustomerHomeState extends State<CustomerHome> {
   late final http.Client httpClient = widget.client ?? http.Client();
   CustomerApi? api;
   int? challengeId;
-  String? testOtp;
   String? userName;
   List<Map<String, dynamic>> rides = [];
   String message = 'Register or sign in with your phone number.';
@@ -114,10 +113,7 @@ class _CustomerHomeState extends State<CustomerHome> {
     final result = await api!.requestOtp(phone: phone.text, name: name.text);
     setState(() {
       challengeId = result['challenge_id'] as int;
-      testOtp = result['test_otp'] as String?;
-      message = testOtp == null
-          ? 'OTP requested. Ask the private-test operator for the code.'
-          : 'Test OTP: $testOtp';
+      message = 'OTP requested. Ask the private-test operator for the code.';
     });
   });
 

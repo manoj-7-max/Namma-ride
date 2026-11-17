@@ -18,11 +18,7 @@ void main() {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/otp/request')) {
         return http.Response(
-          jsonEncode({
-            'challenge_id': 7,
-            'expires_in_seconds': 300,
-            'test_otp': '123456',
-          }),
+          jsonEncode({'challenge_id': 7, 'expires_in_seconds': 300}),
           200,
         );
       }
@@ -67,7 +63,7 @@ void main() {
     await tester.enterText(find.byType(TextField).at(2), 'Anbu');
     await tester.tap(find.text('Request test OTP'));
     await tester.pumpAndSettle();
-    expect(find.text('Test OTP: 123456'), findsOneWidget);
+    expect(find.textContaining('private-test operator'), findsOneWidget);
     await tester.enterText(find.byType(TextField).at(3), '123456');
     await tester.tap(find.text('Verify and sign in'));
     await tester.pumpAndSettle();

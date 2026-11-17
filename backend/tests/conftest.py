@@ -4,7 +4,13 @@ os.environ.setdefault("DB_PASSWORD", "test-database-password-only")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key-for-private-pilot-only")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-private-pilot-only")
 os.environ.setdefault("OTP_PEPPER", "test-otp-pepper-for-private-pilot-only")
-os.environ.setdefault("EXPOSE_TEST_OTP", "true")
+os.environ.setdefault("EXPOSE_TEST_OTP", "false")
+os.environ.setdefault(
+    "PILOT_OTP_ADMIN_API_KEY", "test-pilot-otp-admin-key-private-only"
+)
+os.environ.setdefault(
+    "PILOT_OTP_ENCRYPTION_KEY", "vqpmAs4Ia5oeruKt4H384Mu8lxvy1inTjGu5w2CvhLw="
+)
 
 import pytest
 from sqlalchemy import create_engine

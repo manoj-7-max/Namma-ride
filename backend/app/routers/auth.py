@@ -3,13 +3,14 @@ import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.auth import generate_otp, hash_otp, issue_token, utc_now
 from app.config import get_settings
 from app.database import get_db
-from app.models import OTPChallenge, User
+from app.models import OTPChallenge, PilotOTPDelivery, PilotOTPRecipient, User
+from app.pilot_otp import encrypt_otp
 from app.schemas import OTPRequest, OTPVerify, TokenOut, UserOut
 from app.services import count_role
 
@@ -33,6 +34,12 @@ def user_out(user: User) -> UserOut:
 @router.post("/otp/request")
 def request_otp(payload: OTPRequest, db: Session = Depends(get_db)):
     settings = get_settings()
+    # Applying identical registration fields to new and existing users avoids
+    # turning validation differences into a phone-number enumeration oracle.
+    if not payload.display_name:
+        raise HTTPException(422, "Display name is required")
+    if payload.role == "driver" and not payload.vehicle_number:
+        raise HTTPException(422, "Vehicle number is required for drivers")
     recent_cutoff = utc_now() - timedelta(seconds=settings.otp_request_window_seconds)
     recent_requests = (
         db.scalar(
@@ -48,17 +55,18 @@ def request_otp(payload: OTPRequest, db: Session = Depends(get_db)):
     if recent_requests >= settings.otp_request_limit:
         raise HTTPException(429, "Too many OTP requests; try again later")
     existing = db.scalar(select(User).where(User.phone == payload.phone))
-    if existing and existing.role != payload.role:
-        raise HTTPException(409, "Phone is registered for another role")
+    approved_recipient = db.scalar(
+        select(PilotOTPRecipient).where(
+            PilotOTPRecipient.phone == payload.phone,
+            PilotOTPRecipient.active.is_(True),
+        )
+    )
+    eligible = approved_recipient is not None and (
+        existing is None or existing.role == payload.role
+    )
     if existing is None:
-        if not payload.display_name:
-            raise HTTPException(422, "Display name is required for registration")
-        if payload.role == "driver" and not payload.vehicle_number:
-            raise HTTPException(
-                422, "Vehicle number is required for driver registration"
-            )
         if count_role(db, payload.role) >= ROLE_LIMITS[payload.role]:
-            raise HTTPException(409, f"Private pilot {payload.role} limit reached")
+            eligible = False
     db.execute(
         update(OTPChallenge)
         .where(OTPChallenge.phone == payload.phone, OTPChallenge.consumed_at.is_(None))
@@ -70,19 +78,26 @@ def request_otp(payload: OTPRequest, db: Session = Depends(get_db)):
         role=payload.role,
         display_name=payload.display_name,
         vehicle_number=payload.vehicle_number,
-        code_hash=hash_otp(payload.phone, code),
+        code_hash=hash_otp(payload.phone, code if eligible else generate_otp()),
         expires_at=utc_now() + timedelta(seconds=settings.otp_ttl_seconds),
     )
     db.add(challenge)
+    db.flush()
+    db.execute(delete(PilotOTPDelivery).where(PilotOTPDelivery.expires_at <= utc_now()))
+    if eligible:
+        db.add(
+            PilotOTPDelivery(
+                challenge_id=challenge.id,
+                encrypted_code=encrypt_otp(code),
+                expires_at=challenge.expires_at,
+            )
+        )
     db.commit()
     db.refresh(challenge)
-    result = {
+    return {
         "challenge_id": challenge.id,
         "expires_in_seconds": settings.otp_ttl_seconds,
     }
-    if settings.expose_test_otp:
-        result["test_otp"] = code
-    return result
 
 
 @router.post("/otp/verify", response_model=TokenOut)
@@ -126,3 +141,17 @@ def admin_token(x_admin_key: str | None = Header(default=None)):
     ):
         raise HTTPException(401, "Invalid admin key")
     return TokenOut(access_token=issue_token("admin"))
+
+
+@router.post("/pilot-otp-admin-token", response_model=TokenOut)
+def pilot_otp_admin_token(x_pilot_otp_admin_key: str | None = Header(default=None)):
+    expected = get_settings().pilot_otp_admin_api_key.get_secret_value()
+    if not x_pilot_otp_admin_key or not secrets.compare_digest(
+        x_pilot_otp_admin_key.encode(), expected.encode()
+    ):
+        raise HTTPException(401, "Invalid pilot OTP administrator key")
+    return TokenOut(
+        access_token=issue_token(
+            "admin", permissions=("pilot_otp:manage",), ttl_minutes=15
+        )
+    )

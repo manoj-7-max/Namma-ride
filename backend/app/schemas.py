@@ -45,6 +45,25 @@ class OTPVerify(BaseModel):
         return normalize_phone(value)
 
 
+class PilotOTPRecipientUpdate(BaseModel):
+    phone: str
+    active: bool = True
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, value: str) -> str:
+        return normalize_phone(value)
+
+
+class PilotOTPRetrieve(BaseModel):
+    phone: str
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, value: str) -> str:
+        return normalize_phone(value)
+
+
 class UserOut(BaseModel):
     id: int
     phone: str
