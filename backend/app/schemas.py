@@ -52,6 +52,8 @@ class UserOut(BaseModel):
     role: str
     driver_approved: bool
     vehicle_number: str | None
+    is_active: bool = True
+    driver_suspended: bool = False
 
 
 class TokenOut(BaseModel):
@@ -125,12 +127,29 @@ class ApprovalUpdate(BaseModel):
     approved: bool
 
 
+class ActiveUpdate(BaseModel):
+    active: bool
+
+
+class SuspensionUpdate(BaseModel):
+    suspended: bool
+
+
+class CustomerOut(BaseModel):
+    id: int
+    display_name: str
+    phone: str
+    active: bool
+    created_at: datetime
+
+
 class DriverOut(BaseModel):
     id: int
     display_name: str
     phone: str
     vehicle_number: str | None
     approved: bool
+    suspended: bool = False
 
 
 class RideOut(BaseModel):

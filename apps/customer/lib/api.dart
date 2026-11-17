@@ -81,6 +81,30 @@ class CustomerApi {
       (await _send('POST', '/api/v1/rides/$id/rematch', authenticated: true))
           as Map<String, dynamic>;
 
+  Stream<Map<String, dynamic>> watchEvents(
+    int rideId, {
+    int afterId = 0,
+  }) async* {
+    final request = http.Request(
+      'GET',
+      Uri.parse('$base/api/v1/rides/$rideId/events/stream?after_id=$afterId'),
+    )..headers['Authorization'] = 'Bearer $token';
+    final response = await client
+        .send(request)
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      throw ApiException('Live updates unavailable (${response.statusCode})');
+    }
+    await for (final line
+        in response.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
+      if (line.startsWith('data: ')) {
+        yield (jsonDecode(line.substring(6)) as Map).cast<String, dynamic>();
+      }
+    }
+  }
+
   Future<dynamic> _send(
     String method,
     String path, {

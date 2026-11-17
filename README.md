@@ -1,6 +1,6 @@
 # Namma Ride — Phase 3
 
-Private-pilot platform for up to **100 customers and 10 drivers in Madurantakam, Tamil Nadu**. Phase 3 adds foreground live location, nearby-driver matching, persisted dispatch/events, customer tracking and automated debug APK builds. **Payments and public operations remain disabled; Bike Taxi is demo-only.**
+Private-pilot platform for up to **100 customers and 10 drivers in Madurantakam, Tamil Nadu**. Phase 3 adds foreground live location, nearby-driver matching, persisted dispatch/events, customer tracking and automated pilot APK builds. **Payments and public operations remain disabled; Bike Taxi is demo-only.**
 
 ## Components
 
@@ -8,7 +8,7 @@ Private-pilot platform for up to **100 customers and 10 drivers in Madurantakam,
 - `apps/driver`: Flutter driver app with OTP login, approval gate, foreground permission flow, online/offline location, offers and navigation handoff.
 - `apps/admin`: authenticated React/Vite live operations dashboard.
 - `backend`: FastAPI, SQLAlchemy, PostgreSQL, SSE/polling events and Alembic migrations.
-- `.github/workflows/android-apks.yml`: separate pinned customer/driver debug APK jobs.
+- `.github/workflows/android-apk.yml`: separate pinned customer/driver release-mode pilot APK jobs.
 
 ## Start locally
 
@@ -68,7 +68,7 @@ python scripts/check_database.py
 alembic downgrade base && alembic upgrade head
 ```
 
-CI runs backend/PostgreSQL, Admin and both Flutter suites. The APK workflow builds unsigned-for-production, debug-signed pilot APK artifacts with no secrets or private signing material. See [architecture](docs/ARCHITECTURE.md), [phases](docs/PHASES.md) and [verification](docs/VERIFICATION.md).
+CI runs backend/PostgreSQL, Admin and both Flutter suites. The APK workflow embeds `https://api.manojbusinesssolutions.in`, runs mobile checks, and builds release-mode pilot APK artifacts. Until private signing is configured, Gradle deliberately uses the standard debug key; these are not Play Store or production-signed releases. See [architecture](docs/ARCHITECTURE.md), [phases](docs/PHASES.md), [completion report](docs/COMPLETION_REPORT.md) and [verification](docs/VERIFICATION.md).
 
 ## Security boundary
 

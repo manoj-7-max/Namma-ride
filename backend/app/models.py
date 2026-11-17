@@ -42,6 +42,8 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(100))
     role: Mapped[str] = mapped_column(String(10), index=True)
     driver_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    driver_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
     vehicle_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
 
@@ -139,11 +141,13 @@ class RideDispatch(Base):
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     ride_id: Mapped[int] = mapped_column(ForeignKey("rides.id", ondelete="CASCADE"))
-    driver_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    status: Mapped[str] = mapped_column(String(10), default="offered")
+    driver_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(10), default="offered", index=True)
     distance_m: Mapped[int] = mapped_column(Integer)
     offered_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
-    expires_at: Mapped[datetime] = mapped_column(DateTime())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(), index=True)
 
 
 class RideEvent(Base):
@@ -155,3 +159,16 @@ class RideEvent(Base):
     event_type: Mapped[str] = mapped_column(String(40))
     detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_role: Mapped[str] = mapped_column(String(20))
+    action: Mapped[str] = mapped_column(String(60), index=True)
+    target_type: Mapped[str] = mapped_column(String(30))
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(), server_default=func.now(), index=True
+    )

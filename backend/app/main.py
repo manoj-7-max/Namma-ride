@@ -8,7 +8,7 @@ from app.database import get_engine
 from app.routers import admin, auth, events, locations, rides
 
 settings = get_settings()
-app = FastAPI(title="Namma Ride API", version="0.3.0")
+app = FastAPI(title="Namma Ride API", version="0.3.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

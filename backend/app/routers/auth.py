@@ -3,7 +3,7 @@ import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.auth import generate_otp, hash_otp, issue_token, utc_now
@@ -25,11 +25,28 @@ def user_out(user: User) -> UserOut:
         role=user.role,
         driver_approved=user.driver_approved,
         vehicle_number=user.vehicle_number,
+        is_active=user.is_active,
+        driver_suspended=user.driver_suspended,
     )
 
 
 @router.post("/otp/request")
 def request_otp(payload: OTPRequest, db: Session = Depends(get_db)):
+    settings = get_settings()
+    recent_cutoff = utc_now() - timedelta(seconds=settings.otp_request_window_seconds)
+    recent_requests = (
+        db.scalar(
+            select(func.count())
+            .select_from(OTPChallenge)
+            .where(
+                OTPChallenge.phone == payload.phone,
+                OTPChallenge.created_at >= recent_cutoff,
+            )
+        )
+        or 0
+    )
+    if recent_requests >= settings.otp_request_limit:
+        raise HTTPException(429, "Too many OTP requests; try again later")
     existing = db.scalar(select(User).where(User.phone == payload.phone))
     if existing and existing.role != payload.role:
         raise HTTPException(409, "Phone is registered for another role")
@@ -54,16 +71,16 @@ def request_otp(payload: OTPRequest, db: Session = Depends(get_db)):
         display_name=payload.display_name,
         vehicle_number=payload.vehicle_number,
         code_hash=hash_otp(payload.phone, code),
-        expires_at=utc_now() + timedelta(seconds=get_settings().otp_ttl_seconds),
+        expires_at=utc_now() + timedelta(seconds=settings.otp_ttl_seconds),
     )
     db.add(challenge)
     db.commit()
     db.refresh(challenge)
     result = {
         "challenge_id": challenge.id,
-        "expires_in_seconds": get_settings().otp_ttl_seconds,
+        "expires_in_seconds": settings.otp_ttl_seconds,
     }
-    if get_settings().expose_test_otp:
+    if settings.expose_test_otp:
         result["test_otp"] = code
     return result
 

@@ -72,6 +72,10 @@ def current_principal(
     user = db.get(User, int(subject)) if str(subject).isdigit() else None
     if user is None or user.role != role:
         raise HTTPException(401, "User no longer exists")
+    if not user.is_active:
+        raise HTTPException(403, "Account is inactive")
+    if user.role == "driver" and user.driver_suspended:
+        raise HTTPException(403, "Driver account is suspended")
     return Principal(role=role, user=user)
 
 

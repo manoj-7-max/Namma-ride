@@ -137,6 +137,7 @@ def ride_out(ride: Ride, *, include_location: bool = True) -> RideOut:
             phone=ride.driver.phone,
             vehicle_number=ride.driver.vehicle_number,
             approved=ride.driver.driver_approved,
+            suspended=ride.driver.driver_suspended,
         )
     visible_location = None
     eta = None

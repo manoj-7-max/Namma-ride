@@ -5,7 +5,7 @@
 3. Restrict CORS to the Admin origin and restrict access at the network/identity layer.
 4. Configure matching radius, fix age/accuracy, update interval and offer timeout for Madurantakam.
 5. Approve only the ten verified pilot drivers.
-6. Set GitHub repository variable `PILOT_API_BASE_URL` to the HTTPS API and run the APK workflow.
+6. Run the **Android pilot release APKs** workflow; it embeds `https://api.manojbusinesssolutions.in` at build time.
 7. Install artifacts on test phones, grant foreground location only, and verify the Driver app stops updates when offline/closed.
 8. Test no-driver, rejection/timeout retry, cancellation, GPS-off, denial, offline/reconnect and lifecycle flows before supervised rides.
 

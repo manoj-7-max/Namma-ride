@@ -32,6 +32,23 @@ def create_ride(
     principal: Principal = Depends(require_role("customer")),
     db: Session = Depends(get_db),
 ):
+    active_ride = db.scalar(
+        select(Ride.id).where(
+            Ride.customer_id == principal.user.id,
+            Ride.status.in_(
+                [
+                    "requested",
+                    "matching",
+                    "no_driver_available",
+                    "accepted",
+                    "arrived",
+                    "started",
+                ]
+            ),
+        )
+    )
+    if active_ride is not None:
+        raise HTTPException(409, "Customer already has an active ride")
     distance = round(payload.estimated_distance_km * 10)
     ride = Ride(
         customer_id=principal.user.id,

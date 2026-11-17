@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     otp_pepper: SecretStr = Field(min_length=32)
     expose_test_otp: bool = False
     otp_ttl_seconds: int = Field(default=300, ge=60, le=900)
+    otp_request_limit: int = Field(default=5, ge=1, le=20)
+    otp_request_window_seconds: int = Field(default=900, ge=60, le=3600)
     jwt_ttl_minutes: int = Field(default=720, ge=15, le=1440)
     matching_radius_km: float = Field(default=8.0, gt=0, le=25)
     location_max_age_seconds: int = Field(default=120, ge=30, le=600)
