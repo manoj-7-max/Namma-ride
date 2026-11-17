@@ -44,6 +44,10 @@ class CustomerApi {
     required String pickup,
     required String dropoff,
     required double distance,
+    required double pickupLatitude,
+    required double pickupLongitude,
+    required double dropoffLatitude,
+    required double dropoffLongitude,
   }) async => (await _send(
     'POST',
     '/api/v1/rides',
@@ -52,6 +56,10 @@ class CustomerApi {
       'pickup': pickup,
       'dropoff': dropoff,
       'estimated_distance_km': distance,
+      'pickup_latitude': pickupLatitude,
+      'pickup_longitude': pickupLongitude,
+      'dropoff_latitude': dropoffLatitude,
+      'dropoff_longitude': dropoffLongitude,
     },
   )) as Map<String, dynamic>;
 
@@ -68,6 +76,10 @@ class CustomerApi {
       'cancellation_reason': 'Cancelled in Customer app',
     },
   )) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> rematch(int id) async =>
+      (await _send('POST', '/api/v1/rides/$id/rematch', authenticated: true))
+          as Map<String, dynamic>;
 
   Future<dynamic> _send(
     String method,

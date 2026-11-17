@@ -1,21 +1,23 @@
-# Phase 2 architecture
+# Phase 3 architecture
 
 Flutter Customer / Flutter Driver / React Admin → FastAPI → PostgreSQL 16.
 
-## Authentication
+## Location and matching
 
-Customer and driver registration use normalized Indian phone numbers and a private-test OTP challenge. Challenge codes are random, HMAC-protected, expire in five minutes, are single-use and lock after five invalid attempts. `EXPOSE_TEST_OTP` controls whether the API returns the code; it defaults to false. Verified users receive short-lived JWTs with customer or driver roles. The local admin bootstrap key is exchanged for an admin JWT and is never used as ride authorization.
+`driver_locations` contains exactly one replaceable fix per approved driver: coordinates, accuracy, capture/update time and availability. The API rejects invalid ranges, future/stale fixes, poor accuracy and updates faster than the configured limit. Identity always comes from the verified driver JWT.
 
-Drivers cannot view or accept requests until an admin approves their database record. Authenticated user records are reloaded per request, so approval revocation takes effect without waiting for JWT expiry. Enrollment is capped at 100 customers and 10 drivers.
+For the 10-driver pilot, FastAPI computes Haversine distance over recent, accurate, available rows. It persists only the selected offer in `ride_dispatches`. A PostgreSQL `SELECT ... FOR UPDATE` lock serializes acceptance; the ride's terminal assignment check prevents double claims. Offers have deadlines. Poll/read operations expire overdue offers and select the next nearest untried driver; exhaustion becomes `no_driver_available`, and the customer can request a rematch.
 
-## Ride model
+## Live events and privacy
 
-Customers submit pickup, drop-off and demo distance. The server calculates the fare estimate and creates `requested`. Atomic conditional update assigns the first approved driver to accept it. Other drivers may reject a request without hiding it from colleagues.
+`ride_events` stores lifecycle/dispatch facts, not continuous coordinates. Authorized users can consume bearer-protected SSE at `/api/v1/rides/{id}/events/stream` or poll `/events?after_id=`. Clients reconnect by retaining the last event ID and always reconcile with the ride endpoint.
 
-The enforced progression is `requested → accepted → arrived → started → completed`. Cancellation is terminal and restricted by role/current state. Customer responses include assigned driver name, phone, vehicle and approval state. There is no payment or live location model.
+A customer receives driver coordinates only after assignment while status is accepted, arrived or started. Other customers and unassigned drivers are denied. Admin operations intentionally expose online state and timestamps but not coordinates or customer personal data.
 
-## Persistence and configuration
+## Maps
 
-Alembic owns `pilot_members`, `users`, `otp_challenges`, `rides` and `ride_rejections`. PostgreSQL constraints validate roles and ride statuses. Settings require strong database, admin, JWT and OTP secrets and redact them in representations.
+The Customer app uses `flutter_map` and OpenStreetMap tiles with attribution. This avoids embedding a map key for the private pilot, but public OSM tiles have a usage policy and are not unlimited. Navigation is handed to an installed Android app. ETA is labeled estimated and uses straight-line distance, not a routing API.
 
-Compose binds the API to loopback by default, keeps PostgreSQL internal, waits for DB health, migrates before startup and runs the API as non-root. Browser CORS defaults to the local admin origin. Bike Taxi and all fares are demo-only; public operations and payments are explicit disabled flags.
+## Runtime boundaries
+
+Android requests fine/coarse foreground location only. The Driver app sends fixes while visibly online and active; it has no background-location permission. Payments/public operations remain disabled and Bike Taxi is demo-only.

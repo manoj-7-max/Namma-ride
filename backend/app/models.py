@@ -4,6 +4,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -44,6 +45,10 @@ class User(Base):
     vehicle_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
 
+    location: Mapped["DriverLocation | None"] = relationship(
+        back_populates="driver", uselist=False
+    )
+
 
 class OTPChallenge(Base):
     __tablename__ = "otp_challenges"
@@ -64,7 +69,7 @@ class Ride(Base):
     __tablename__ = "rides"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('requested','accepted','arrived','started','completed','cancelled')",
+            "status IN ('requested','matching','no_driver_available','accepted','arrived','started','completed','cancelled')",
             name="valid_ride_status",
         ),
         CheckConstraint("estimated_fare_paise >= 0", name="nonnegative_fare"),
@@ -78,6 +83,10 @@ class Ride(Base):
     )
     pickup: Mapped[str] = mapped_column(String(200))
     dropoff: Mapped[str] = mapped_column(String(200))
+    pickup_latitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    pickup_longitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    dropoff_latitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    dropoff_longitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
     distance_tenths_km: Mapped[int] = mapped_column(Integer)
     estimated_fare_paise: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(12), default="requested", index=True)
@@ -100,4 +109,49 @@ class RideRejection(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     ride_id: Mapped[int] = mapped_column(ForeignKey("rides.id", ondelete="CASCADE"))
     driver_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
+
+
+class DriverLocation(Base):
+    """Latest driver fix only; Phase 3 deliberately stores no location trail."""
+
+    __tablename__ = "driver_locations"
+    driver_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    latitude: Mapped[float] = mapped_column(Float())
+    longitude: Mapped[float] = mapped_column(Float())
+    accuracy_m: Mapped[float] = mapped_column(Float())
+    captured_at: Mapped[datetime] = mapped_column(DateTime())
+    available: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
+    driver: Mapped[User] = relationship(back_populates="location")
+
+
+class RideDispatch(Base):
+    __tablename__ = "ride_dispatches"
+    __table_args__ = (
+        UniqueConstraint("ride_id", "driver_id", name="uq_dispatch_ride_driver"),
+        CheckConstraint(
+            "status IN ('offered','rejected','expired','accepted')",
+            name="valid_dispatch_status",
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ride_id: Mapped[int] = mapped_column(ForeignKey("rides.id", ondelete="CASCADE"))
+    driver_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(10), default="offered")
+    distance_m: Mapped[int] = mapped_column(Integer)
+    offered_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime())
+
+
+class RideEvent(Base):
+    __tablename__ = "ride_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ride_id: Mapped[int] = mapped_column(
+        ForeignKey("rides.id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())

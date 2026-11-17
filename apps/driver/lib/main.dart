@@ -1,5 +1,9 @@
+import 'dart:async';
+
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:material_ui/material_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
 
@@ -27,7 +31,7 @@ class DriverHome extends StatefulWidget {
   State<DriverHome> createState() => _DriverHomeState();
 }
 
-class _DriverHomeState extends State<DriverHome> {
+class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
   final server = TextEditingController(
     text: const String.fromEnvironment('API_BASE_URL'),
   );
@@ -44,15 +48,33 @@ class _DriverHomeState extends State<DriverHome> {
   String message = 'Register or sign in. Admin approval is required for rides.';
   List<Map<String, dynamic>> requests = [];
   List<Map<String, dynamic>> rides = [];
+  bool online = false;
+  Timer? locationTimer;
+  DateTime? lastLocationAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (online && state != AppLifecycleState.resumed) {
+      setOnline(false);
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final controller in [server, phone, name, vehicle, otp]) {
       controller.dispose();
     }
     if (widget.client == null) {
       httpClient.close();
     }
+    locationTimer?.cancel();
     super.dispose();
   }
 
@@ -146,6 +168,75 @@ class _DriverHomeState extends State<DriverHome> {
     await refresh();
   });
 
+  Future<void> setOnline(bool value) => run(() async {
+    if (!value) {
+      locationTimer?.cancel();
+      locationTimer = null;
+      if (lastLocationAt != null) await sendLocation(false);
+      setState(() {
+        online = false;
+        message = 'Offline · location sharing stopped.';
+      });
+      return;
+    }
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      setState(() => message = 'GPS is off. Enable it before going online.');
+      return;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      setState(() => message = 'Foreground location permission is required.');
+      return;
+    }
+    await sendLocation(true);
+    setState(() => online = true);
+    locationTimer?.cancel();
+    locationTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      if (!online || !mounted) return;
+      try {
+        await sendLocation(true);
+        await refresh();
+      } catch (_) {
+        if (mounted) {
+          setState(() => message = 'Offline · retrying location sync…');
+        }
+      }
+    });
+  });
+
+  Future<void> sendLocation(bool available) async {
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 10),
+      ),
+    );
+    await api!.updateLocation(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+      available: available,
+    );
+    if (mounted) setState(() => lastLocationAt = DateTime.now());
+  }
+
+  Future<void> navigate(Map<String, dynamic> ride) async {
+    final lat = ride['pickup_latitude'];
+    final lon = ride['pickup_longitude'];
+    if (lat == null || lon == null) {
+      setState(() => message = 'Pickup coordinates are unavailable.');
+      return;
+    }
+    final uri = Uri.parse('geo:$lat,$lon?q=$lat,$lon');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      setState(() => message = 'No navigation app is available.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Namma Ride · Driver')),
@@ -153,7 +244,7 @@ class _DriverHomeState extends State<DriverHome> {
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Chip(label: Text('PRIVATE TEST · PHASE 2')),
+          const Chip(label: Text('PRIVATE TEST · PHASE 3')),
           const Text('Madurantakam, Tamil Nadu · Bike Taxi demo-only'),
           const SizedBox(height: 16),
           if (!loggedIn) ...authForm() else ...driverDashboard(),
@@ -224,6 +315,19 @@ class _DriverHomeState extends State<DriverHome> {
       child: Text(approved ? 'Refresh rides' : 'Check approval'),
     ),
     if (approved) ...[
+      SwitchListTile(
+        title: Text(online ? 'Online for ride offers' : 'Offline'),
+        subtitle: Text(
+          lastLocationAt == null
+              ? 'Location is not being shared'
+              : 'Last update: $lastLocationAt · foreground only',
+        ),
+        value: online,
+        onChanged: busy ? null : setOnline,
+      ),
+      const Text(
+        'Location sharing runs only while this app is open and online. No hidden background tracking.',
+      ),
       Text('Available requests', style: Theme.of(context).textTheme.titleLarge),
       if (requests.isEmpty) const Text('No open requests.'),
       ...requests.map(requestCard),
@@ -262,12 +366,20 @@ class _DriverHomeState extends State<DriverHome> {
       child: ListTile(
         title: Text('#${ride['id']} · ${ride['status']}'),
         subtitle: Text('${ride['pickup']} → ${ride['dropoff']}'),
-        trailing: nextState == null
-            ? null
-            : FilledButton(
+        trailing: Wrap(
+          children: [
+            IconButton(
+              tooltip: 'Open navigation',
+              onPressed: () => navigate(ride),
+              icon: const Icon(Icons.navigation),
+            ),
+            if (nextState != null)
+              FilledButton(
                 onPressed: () => advance(ride['id'] as int, nextState),
                 child: Text(nextState.toUpperCase()),
               ),
+          ],
+        ),
       ),
     );
   }

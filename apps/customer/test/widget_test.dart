@@ -7,9 +7,9 @@ import 'package:http/testing.dart';
 import 'package:namma_ride_customer/main.dart';
 
 void main() {
-  testWidgets('shows private Phase 2 customer registration', (tester) async {
+  testWidgets('shows private Phase 3 customer registration', (tester) async {
     await tester.pumpWidget(const NammaRideCustomerApp());
-    expect(find.text('PRIVATE TEST · PHASE 2'), findsOneWidget);
+    expect(find.text('PRIVATE TEST · PHASE 3'), findsOneWidget);
     expect(find.text('Request test OTP'), findsOneWidget);
     expect(find.textContaining('No real payments'), findsOneWidget);
   });
@@ -74,7 +74,20 @@ void main() {
     expect(find.text('Vanakkam, Anbu!'), findsOneWidget);
     await tester.enterText(find.byType(TextField).at(0), 'Bus Stand');
     await tester.enterText(find.byType(TextField).at(1), 'Railway Station');
-    await tester.enterText(find.byType(TextField).at(2), '3');
+    await tester.scrollUntilVisible(
+      find.text('Estimated distance (km)'),
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Estimated distance (km)'),
+      '3',
+    );
     await tester.tap(find.text('Request demo ride'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Estimated fare ₹95'), findsOneWidget);

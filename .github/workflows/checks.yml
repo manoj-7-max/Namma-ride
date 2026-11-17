@@ -1,4 +1,4 @@
-name: Phase 2 checks
+name: Phase 3 checks
 on: [push, pull_request]
 permissions:
   contents: read
@@ -37,6 +37,7 @@ jobs:
       - run: pytest -q
       - run: alembic upgrade head
       - run: python scripts/check_database.py
+      - run: python scripts/check_concurrency.py
       - run: alembic downgrade base && alembic upgrade head
   admin:
     runs-on: ubuntu-latest

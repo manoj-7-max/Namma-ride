@@ -14,7 +14,7 @@ def test_live_and_pilot_boundaries():
         data["location"],
         data["customer_limit"],
         data["driver_limit"],
-    ) == (2, "Madurantakam", 100, 10)
+    ) == (3, "Madurantakam", 100, 10)
     assert data["payment_processing_enabled"] is False
     assert data["public_ride_operations_enabled"] is False
     assert data["bike_taxi_mode"] == "demo_only"

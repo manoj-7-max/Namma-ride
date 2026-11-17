@@ -1,10 +1,13 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import Principal, require_role
+from app.auth import Principal, require_role, utc_now
+from app.config import get_settings
 from app.database import get_db
-from app.models import Ride, User
+from app.models import DriverLocation, Ride, RideEvent, User
 from app.schemas import ApprovalUpdate, DriverOut, RideOut
 from app.services import count_role, ride_out
 
@@ -25,6 +28,23 @@ def summary(
         )
         or 0,
         "rides": db.scalar(select(func.count()).select_from(Ride)) or 0,
+        "online_drivers": db.scalar(
+            select(func.count())
+            .select_from(DriverLocation)
+            .where(
+                DriverLocation.available.is_(True),
+                DriverLocation.captured_at
+                >= utc_now()
+                - timedelta(seconds=get_settings().location_max_age_seconds),
+            )
+        )
+        or 0,
+        "active_rides": db.scalar(
+            select(func.count())
+            .select_from(Ride)
+            .where(Ride.status.in_(["matching", "accepted", "arrived", "started"]))
+        )
+        or 0,
         "customer_limit": 100,
         "driver_limit": 10,
     }
@@ -73,6 +93,58 @@ def approve_driver(
 @router.get("/rides", response_model=list[RideOut])
 def rides(_: Principal = Depends(require_role("admin")), db: Session = Depends(get_db)):
     return [
-        ride_out(ride)
+        ride_out(ride, include_location=False)
         for ride in db.scalars(select(Ride).order_by(Ride.id.desc())).all()
     ]
+
+
+@router.get("/operations")
+def operations(
+    _: Principal = Depends(require_role("admin")), db: Session = Depends(get_db)
+):
+    drivers = db.execute(
+        select(User, DriverLocation)
+        .join(DriverLocation, DriverLocation.driver_id == User.id, isouter=True)
+        .where(User.role == "driver")
+        .order_by(User.id)
+    ).all()
+    failures = db.scalars(
+        select(RideEvent)
+        .where(RideEvent.event_type.in_(["offer_expired", "no_driver_available"]))
+        .order_by(RideEvent.id.desc())
+        .limit(20)
+    ).all()
+    return {
+        "drivers": [
+            {
+                "id": user.id,
+                "display_name": user.display_name,
+                "vehicle_number": user.vehicle_number,
+                "approved": user.driver_approved,
+                "available": bool(location and location.available),
+                "last_location_at": location.captured_at if location else None,
+            }
+            for user, location in drivers
+        ],
+        "active_rides": [
+            {
+                "id": ride.id,
+                "status": ride.status,
+                "driver_id": ride.driver_id,
+                "updated_at": ride.updated_at,
+            }
+            for ride in db.scalars(
+                select(Ride)
+                .where(Ride.status.in_(["matching", "accepted", "arrived", "started"]))
+                .order_by(Ride.id.desc())
+            ).all()
+        ],
+        "failures": [
+            {
+                "ride_id": event.ride_id,
+                "type": event.event_type,
+                "created_at": event.created_at,
+            }
+            for event in failures
+        ],
+    }

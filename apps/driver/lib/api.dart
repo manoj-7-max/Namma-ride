@@ -61,6 +61,24 @@ class DriverApi {
         body: {'status': status},
       )) as Map<String, dynamic>;
 
+  Future<Map<String, dynamic>> updateLocation({
+    required double latitude,
+    required double longitude,
+    required double accuracy,
+    required bool available,
+  }) async => (await _send(
+    'PUT',
+    '/api/v1/driver/location',
+    auth: true,
+    body: {
+      'latitude': latitude,
+      'longitude': longitude,
+      'accuracy_m': accuracy,
+      'captured_at': DateTime.now().toUtc().toIso8601String(),
+      'available': available,
+    },
+  )) as Map<String, dynamic>;
+
   Future<dynamic> _send(
     String method,
     String path, {
