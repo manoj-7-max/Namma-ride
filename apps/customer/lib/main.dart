@@ -1,4 +1,9 @@
+import 'dart:async';
+
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'api.dart';
@@ -46,6 +51,9 @@ class _CustomerHomeState extends State<CustomerHome> {
   List<Map<String, dynamic>> rides = [];
   String message = 'Register or sign in with your phone number.';
   bool busy = false;
+  LatLng? pickupPoint = const LatLng(12.508, 79.884);
+  LatLng? dropoffPoint = const LatLng(12.515, 79.89);
+  Timer? polling;
 
   @override
   void dispose() {
@@ -61,6 +69,7 @@ class _CustomerHomeState extends State<CustomerHome> {
       controller.dispose();
     }
     if (widget.client == null) httpClient.close();
+    polling?.cancel();
     super.dispose();
   }
 
@@ -122,6 +131,16 @@ class _CustomerHomeState extends State<CustomerHome> {
       message = 'Signed in. You can book a demo ride.';
     });
     await refresh();
+    polling = Timer.periodic(const Duration(seconds: 8), (_) async {
+      if (!mounted || busy) return;
+      try {
+        await refresh();
+      } catch (_) {
+        if (mounted) {
+          setState(() => message = 'Offline · retrying status sync…');
+        }
+      }
+    });
   });
 
   Future<void> refresh() async {
@@ -134,9 +153,11 @@ class _CustomerHomeState extends State<CustomerHome> {
     if (pickup.text.trim().length < 3 ||
         dropoff.text.trim().length < 3 ||
         km == null ||
-        km <= 0) {
+        km <= 0 ||
+        pickupPoint == null ||
+        dropoffPoint == null) {
       setState(
-        () => message = 'Enter pickup, drop-off and a positive demo distance.',
+        () => message = 'Enter route, distance and select both map points.',
       );
       return;
     }
@@ -144,12 +165,43 @@ class _CustomerHomeState extends State<CustomerHome> {
       pickup: pickup.text,
       dropoff: dropoff.text,
       distance: km,
+      pickupLatitude: pickupPoint!.latitude,
+      pickupLongitude: pickupPoint!.longitude,
+      dropoffLatitude: dropoffPoint!.latitude,
+      dropoffLongitude: dropoffPoint!.longitude,
     );
     setState(
       () => message =
           'Ride #${ride['id']} requested. Estimated fare ₹${ride['estimated_fare_rupees']} (demo only).',
     );
     await refresh();
+  });
+
+  Future<void> useCurrentLocation() => run(() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      setState(
+        () => message = 'GPS is off. Enable location services or tap the map.',
+      );
+      return;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      setState(
+        () => message =
+            'Location permission denied. You can select points on the map.',
+      );
+      return;
+    }
+    final position = await Geolocator.getCurrentPosition();
+    setState(() {
+      pickupPoint = LatLng(position.latitude, position.longitude);
+      pickup.text = 'Current location';
+      message = 'Pickup selected. Tap the map to choose drop-off.';
+    });
   });
 
   Future<void> cancel(int id) => run(() async {
@@ -165,7 +217,7 @@ class _CustomerHomeState extends State<CustomerHome> {
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Chip(label: Text('PRIVATE TEST · PHASE 2')),
+          const Chip(label: Text('PRIVATE TEST · PHASE 3')),
           const Text('Madurantakam, Tamil Nadu · Bike Taxi demo-only'),
           const SizedBox(height: 16),
           if (!loggedIn) ...authForm() else ...rideDashboard(),
@@ -225,6 +277,50 @@ class _CustomerHomeState extends State<CustomerHome> {
       style: Theme.of(context).textTheme.headlineSmall,
     ),
     const SizedBox(height: 12),
+    SizedBox(
+      height: 260,
+      child: FlutterMap(
+        options: MapOptions(
+          initialCenter: const LatLng(12.511, 79.884),
+          initialZoom: 13,
+          onTap: (_, point) => setState(() {
+            if (pickupPoint == null || dropoffPoint != null) {
+              pickupPoint = point;
+              dropoffPoint = null;
+              pickup.text = 'Selected pickup';
+            } else {
+              dropoffPoint = point;
+              dropoff.text = 'Selected drop-off';
+            }
+          }),
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'in.nammaride.namma_ride_customer.pilot',
+          ),
+          MarkerLayer(
+            markers: [
+              if (pickupPoint != null)
+                Marker(
+                  point: pickupPoint!,
+                  child: const Icon(Icons.person_pin_circle),
+                ),
+              if (dropoffPoint != null)
+                Marker(point: dropoffPoint!, child: const Icon(Icons.flag)),
+            ],
+          ),
+          const RichAttributionWidget(
+            attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+          ),
+        ],
+      ),
+    ),
+    TextButton.icon(
+      onPressed: busy ? null : useCurrentLocation,
+      icon: const Icon(Icons.my_location),
+      label: const Text('Use my location for pickup'),
+    ),
     TextField(
       controller: pickup,
       decoration: const InputDecoration(labelText: 'Pickup'),
@@ -257,14 +353,26 @@ class _CustomerHomeState extends State<CustomerHome> {
 
   Widget rideCard(Map<String, dynamic> ride) {
     final driver = ride['driver'] as Map<String, dynamic>?;
+    final location = ride['driver_location'] as Map<String, dynamic>?;
+    final eta = ride['driver_eta_minutes'];
     return Card(
       child: ListTile(
         title: Text('#${ride['id']} · ${ride['status']}'),
         subtitle: Text(
-          '${ride['pickup']} → ${ride['dropoff']}\nDemo estimate ₹${ride['estimated_fare_rupees']}${driver == null ? '\nWaiting for a driver' : '\nDriver: ${driver['display_name']} · ${driver['vehicle_number'] ?? 'vehicle pending'} · ${driver['phone']}'}',
+          '${ride['pickup']} → ${ride['dropoff']}\nDemo estimate ₹${ride['estimated_fare_rupees']}${driver == null ? '\nMatching nearby drivers…' : '\nDriver: ${driver['display_name']} · ${driver['vehicle_number'] ?? 'vehicle pending'}'}${eta == null ? '' : '\nEstimated ETA: $eta min'}${location == null ? '' : '\nLocation updated: ${location['captured_at']}'}',
         ),
         isThreeLine: true,
-        trailing: ['requested', 'accepted'].contains(ride['status'])
+        trailing: ride['status'] == 'no_driver_available'
+            ? TextButton(
+                onPressed: busy
+                    ? null
+                    : () => run(() async {
+                        await api!.rematch(ride['id'] as int);
+                        await refresh();
+                      }),
+                child: const Text('Retry'),
+              )
+            : ['requested', 'matching', 'accepted'].contains(ride['status'])
             ? TextButton(
                 onPressed: busy ? null : () => cancel(ride['id'] as int),
                 child: const Text('Cancel'),

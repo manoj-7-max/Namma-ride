@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     expose_test_otp: bool = False
     otp_ttl_seconds: int = Field(default=300, ge=60, le=900)
     jwt_ttl_minutes: int = Field(default=720, ge=15, le=1440)
+    matching_radius_km: float = Field(default=8.0, gt=0, le=25)
+    location_max_age_seconds: int = Field(default=120, ge=30, le=600)
+    location_max_accuracy_m: float = Field(default=100.0, gt=0, le=500)
+    location_min_interval_seconds: int = Field(default=5, ge=1, le=60)
+    dispatch_offer_seconds: int = Field(default=30, ge=10, le=120)
     cors_origins: list[str] = ["http://localhost:5173"]
 
     @field_validator("db_password", "admin_api_key", "jwt_secret", "otp_pepper")

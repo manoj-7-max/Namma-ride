@@ -64,6 +64,56 @@ class RideCreate(BaseModel):
     pickup: str = Field(min_length=3, max_length=200)
     dropoff: str = Field(min_length=3, max_length=200)
     estimated_distance_km: float = Field(gt=0, le=100)
+    pickup_latitude: float | None = Field(default=None, ge=-90, le=90)
+    pickup_longitude: float | None = Field(default=None, ge=-180, le=180)
+    dropoff_latitude: float | None = Field(default=None, ge=-90, le=90)
+    dropoff_longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @field_validator("dropoff_longitude")
+    @classmethod
+    def coordinate_pairs(cls, value: float | None, info):
+        fields = info.data
+        values = [
+            fields.get("pickup_latitude"),
+            fields.get("pickup_longitude"),
+            fields.get("dropoff_latitude"),
+            value,
+        ]
+        if any(item is not None for item in values) and any(
+            item is None for item in values
+        ):
+            raise ValueError("All pickup and drop-off coordinates are required")
+        return value
+
+
+class DriverLocationUpdate(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_m: float = Field(gt=0, le=500)
+    captured_at: datetime
+    available: bool
+
+
+class DriverLocationOut(BaseModel):
+    latitude: float
+    longitude: float
+    accuracy_m: float
+    captured_at: datetime
+    available: bool
+    updated_at: datetime
+
+
+class NearbyDriverSummary(BaseModel):
+    available_count: int
+    nearest_distance_km: float | None
+    radius_km: float
+
+
+class RideEventOut(BaseModel):
+    id: int
+    event_type: str
+    detail: str | None
+    created_at: datetime
 
 
 class RideStatusUpdate(BaseModel):
@@ -95,3 +145,10 @@ class RideOut(BaseModel):
     driver: DriverOut | None
     cancellation_reason: str | None
     created_at: datetime
+    pickup_latitude: float | None = None
+    pickup_longitude: float | None = None
+    dropoff_latitude: float | None = None
+    dropoff_longitude: float | None = None
+    matching_state: str | None = None
+    driver_location: DriverLocationOut | None = None
+    driver_eta_minutes: int | None = None

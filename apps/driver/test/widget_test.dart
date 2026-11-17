@@ -7,9 +7,9 @@ import 'package:http/testing.dart';
 import 'package:namma_ride_driver/main.dart';
 
 void main() {
-  testWidgets('shows approval-gated Phase 2 registration', (tester) async {
+  testWidgets('shows approval-gated Phase 3 registration', (tester) async {
     await tester.pumpWidget(const NammaRideDriverApp());
-    expect(find.text('PRIVATE TEST · PHASE 2'), findsOneWidget);
+    expect(find.text('PRIVATE TEST · PHASE 3'), findsOneWidget);
     expect(find.textContaining('Admin approval'), findsOneWidget);
     expect(find.textContaining('No real payments'), findsOneWidget);
   });

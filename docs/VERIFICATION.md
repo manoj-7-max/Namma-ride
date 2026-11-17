@@ -1,24 +1,29 @@
-# Phase 2 verification — 17 November 2026
+# Phase 3 verification — 17 November 2026
 
 ## Passed locally
 
-- Backend: Ruff format and lint; 9 pytest cases covering OTP expiry/attempt/single-use behavior, role isolation, driver approval, pilot caps/configuration, booking/fare, accept/reject, cancellation, invalid transitions, full lifecycle and customer-visible driver details.
-- Customer Flutter: analysis with no issues and 2 widget tests, including mocked OTP registration/login and booking.
-- Driver Flutter: analysis with no issues and 2 widget tests, including the admin-approval gate.
-- Admin Dashboard: clean TypeScript/Vite production build.
-- Docker Compose configuration interpolation with the new JWT and OTP settings.
-- Backend container image built successfully as non-root using the approved CA bundle as an ephemeral secret.
-- PostgreSQL container initialized and became healthy.
-- Source diff whitespace check passed.
+- Backend Ruff format/lint and compilation.
+- 13 backend tests covering OTP/JWT and Phase 2 lifecycle plus coordinate/accuracy/staleness validation, driver identity/role boundaries, availability, Haversine radius, nearest offer, expired-offer retry, no-driver/rematch, event authorization, assigned-driver tracking and double-accept rejection.
+- Customer Flutter analysis and 2 widget tests, including integrated OTP/login/coordinate booking.
+- Driver Flutter analysis and 2 widget tests, including approval gating.
+- React/TypeScript Admin production build.
+- Backend container source configuration and Compose configuration are covered by CI.
+- A dedicated PostgreSQL concurrency smoke script uses two concurrent sessions and `FOR UPDATE` to verify exactly one assignment commits.
 
-The repository CI repeats these checks and runs Alembic upgrade, database/JWT smoke check, downgrade to base and re-upgrade against an isolated PostgreSQL service.
+## APK build status
 
-## Environment limitations
+A local customer debug APK build was attempted with Flutter 3.50.0, JDK 21 and Android SDK 36. Gradle stopped because the temporary `/dev/shm` filesystem reached 100% while transforming Android dependencies. No local APK was produced, and the driver build was not started after that deterministic storage failure.
 
-The workspace filesystem filled while Docker created the final API container layer. The image itself built, and PostgreSQL became healthy, but a full Compose API startup plus the local Alembic rollback/reapply smoke check could not finish here. CI is configured to perform that database sequence on a clean runner. This is an execution-environment storage blocker, not a failing source check.
+The GitHub Actions workflow has clean Ubuntu runners and is the authoritative build. An APK exists only after both workflow jobs pass and upload their named artifacts.
 
-The installed Starlette compatibility shim emits one non-failing TestClient deprecation warning. No physical Android device/emulator, browser end-to-end test, production SMS, GPS/map flow or 100/10 concurrent load test was run.
+## CI validation
 
-## Product boundary
+The Phase 3 PR runs:
 
-Phase 2 is a private test MVP. OTP delivery is deliberately test-only, distance is user-entered, fares are estimates, and there is no payment processing or public ride operation. Bike Taxi is demo-only.
+- PostgreSQL migration upgrade, database/JWT smoke test, real row-lock concurrency test, full downgrade and re-upgrade.
+- Backend tests and Ruff.
+- Customer/Driver Flutter format, analysis and tests.
+- Admin TypeScript/Vite build.
+- Separate customer and driver debug APK builds and artifact uploads.
+
+The non-failing Starlette TestClient compatibility warning remains. No physical-device field test, production routing, production SMS, background tracking or 100/10 concurrent load test was run.
