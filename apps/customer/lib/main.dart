@@ -54,6 +54,10 @@ class _CustomerHomeState extends State<CustomerHome> {
   LatLng? pickupPoint = const LatLng(12.508, 79.884);
   LatLng? dropoffPoint = const LatLng(12.515, 79.89);
   Timer? polling;
+  Timer? reconnectTimer;
+  StreamSubscription<Map<String, dynamic>>? liveEvents;
+  int? watchedRideId;
+  int lastEventId = 0;
 
   @override
   void dispose() {
@@ -70,6 +74,8 @@ class _CustomerHomeState extends State<CustomerHome> {
     }
     if (widget.client == null) httpClient.close();
     polling?.cancel();
+    reconnectTimer?.cancel();
+    liveEvents?.cancel();
     super.dispose();
   }
 
@@ -146,6 +152,55 @@ class _CustomerHomeState extends State<CustomerHome> {
   Future<void> refresh() async {
     final result = await api!.rides();
     if (mounted) setState(() => rides = result);
+    startLiveUpdates(result);
+  }
+
+  void startLiveUpdates(List<Map<String, dynamic>> currentRides) {
+    Map<String, dynamic>? active;
+    for (final ride in currentRides) {
+      if ([
+        'matching',
+        'accepted',
+        'arrived',
+        'started',
+      ].contains(ride['status'])) {
+        active = ride;
+        break;
+      }
+    }
+    final rideId = active?['id'] as int?;
+    if (rideId == null) {
+      liveEvents?.cancel();
+      liveEvents = null;
+      watchedRideId = null;
+      return;
+    }
+    if (watchedRideId == rideId && liveEvents != null) return;
+    liveEvents?.cancel();
+    reconnectTimer?.cancel();
+    watchedRideId = rideId;
+    liveEvents = api!
+        .watchEvents(rideId, afterId: lastEventId)
+        .listen(
+          (event) {
+            lastEventId = event['id'] as int? ?? lastEventId;
+            refresh().catchError((_) {});
+          },
+          onError: (_) => scheduleReconnect(),
+          onDone: scheduleReconnect,
+        );
+  }
+
+  void scheduleReconnect() {
+    liveEvents = null;
+    reconnectTimer?.cancel();
+    reconnectTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && watchedRideId != null) {
+        final id = watchedRideId!;
+        watchedRideId = null;
+        startLiveUpdates(rides.where((ride) => ride['id'] == id).toList());
+      }
+    });
   }
 
   Future<void> book() => run(() async {

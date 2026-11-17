@@ -51,6 +51,10 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
   bool online = false;
   Timer? locationTimer;
   DateTime? lastLocationAt;
+  StreamSubscription<Map<String, dynamic>>? liveEvents;
+  Timer? reconnectTimer;
+  int? watchedRideId;
+  int lastEventId = 0;
 
   @override
   void initState() {
@@ -75,6 +79,8 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
       httpClient.close();
     }
     locationTimer?.cancel();
+    reconnectTimer?.cancel();
+    liveEvents?.cancel();
     super.dispose();
   }
 
@@ -142,6 +148,7 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
           approved = true;
           message = 'Ride lists refreshed.';
         });
+        startLiveUpdates(assigned);
       }
     } on ApiException catch (error) {
       if (error.message.contains('approval')) {
@@ -222,6 +229,49 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
       available: available,
     );
     if (mounted) setState(() => lastLocationAt = DateTime.now());
+  }
+
+  void startLiveUpdates(List<Map<String, dynamic>> assigned) {
+    Map<String, dynamic>? active;
+    for (final ride in assigned) {
+      if (['accepted', 'arrived', 'started'].contains(ride['status'])) {
+        active = ride;
+        break;
+      }
+    }
+    final rideId = active?['id'] as int?;
+    if (rideId == null) {
+      liveEvents?.cancel();
+      liveEvents = null;
+      watchedRideId = null;
+      return;
+    }
+    if (watchedRideId == rideId && liveEvents != null) return;
+    liveEvents?.cancel();
+    reconnectTimer?.cancel();
+    watchedRideId = rideId;
+    liveEvents = api!
+        .watchEvents(rideId, afterId: lastEventId)
+        .listen(
+          (event) {
+            lastEventId = event['id'] as int? ?? lastEventId;
+            refresh().catchError((_) {});
+          },
+          onError: (_) => scheduleReconnect(),
+          onDone: scheduleReconnect,
+        );
+  }
+
+  void scheduleReconnect() {
+    liveEvents = null;
+    reconnectTimer?.cancel();
+    reconnectTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && watchedRideId != null) {
+        final id = watchedRideId!;
+        watchedRideId = null;
+        startLiveUpdates(rides.where((ride) => ride['id'] == id).toList());
+      }
+    });
   }
 
   Future<void> navigate(Map<String, dynamic> ride) async {

@@ -1,4 +1,4 @@
-name: Phase 3 Android debug APKs
+name: Android pilot release APKs
 
 on:
   workflow_dispatch:
@@ -6,16 +6,21 @@ on:
     paths:
       - 'apps/customer/**'
       - 'apps/driver/**'
-      - '.github/workflows/android-apks.yml'
+      - '.github/workflows/android-apk.yml'
 
 permissions:
   contents: read
 
+env:
+  FLUTTER_VERSION: '3.50.0'
+  PILOT_API_BASE_URL: 'https://api.manojbusinesssolutions.in'
+
 jobs:
   customer-apk:
     runs-on: ubuntu-latest
-    env:
-      PILOT_API_BASE_URL: ${{ vars.PILOT_API_BASE_URL || 'https://pilot-api.invalid' }}
+    defaults:
+      run:
+        working-directory: apps/customer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -26,26 +31,29 @@ jobs:
         with:
           packages: platform-tools
       - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+        working-directory: .
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.50.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
-        working-directory: apps/customer
-      - run: flutter build apk --debug --flavor pilot --dart-define=API_BASE_URL=${PILOT_API_BASE_URL}
-        working-directory: apps/customer
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build apk --release --flavor pilot --dart-define=API_BASE_URL=${PILOT_API_BASE_URL}
       - uses: actions/upload-artifact@v4
         with:
-          name: namma-ride-customer-debug-apk
-          path: apps/customer/build/app/outputs/flutter-apk/app-pilot-debug.apk
+          name: namma-ride-customer-apk
+          path: apps/customer/build/app/outputs/flutter-apk/app-pilot-release.apk
           if-no-files-found: error
           retention-days: 14
 
   driver-apk:
     runs-on: ubuntu-latest
-    env:
-      PILOT_API_BASE_URL: ${{ vars.PILOT_API_BASE_URL || 'https://pilot-api.invalid' }}
+    defaults:
+      run:
+        working-directory: apps/driver
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -56,18 +64,21 @@ jobs:
         with:
           packages: platform-tools
       - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+        working-directory: .
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.50.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
-        working-directory: apps/driver
-      - run: flutter build apk --debug --flavor pilot --dart-define=API_BASE_URL=${PILOT_API_BASE_URL}
-        working-directory: apps/driver
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build apk --release --flavor pilot --dart-define=API_BASE_URL=${PILOT_API_BASE_URL}
       - uses: actions/upload-artifact@v4
         with:
-          name: namma-ride-driver-debug-apk
-          path: apps/driver/build/app/outputs/flutter-apk/app-pilot-debug.apk
+          name: namma-ride-driver-apk
+          path: apps/driver/build/app/outputs/flutter-apk/app-pilot-release.apk
           if-no-files-found: error
           retention-days: 14
+
