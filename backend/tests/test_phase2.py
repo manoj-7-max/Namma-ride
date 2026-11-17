@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.main import app
 
 client = TestClient(app)
@@ -27,7 +28,7 @@ def register(role: str, phone: str, name: str, vehicle: str | None = None):
 def admin_headers():
     response = client.post(
         "/api/v1/auth/admin-token",
-        headers={"X-Admin-Key": "test-admin-key-for-private-pilot-only"},
+        headers={"X-Admin-Key": get_settings().admin_api_key.get_secret_value()},
     )
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
