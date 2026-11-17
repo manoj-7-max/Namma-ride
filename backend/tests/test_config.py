@@ -9,6 +9,8 @@ def test_secrets_are_required_and_not_logged():
         _env_file=None,
         db_password="private-db-password-for-tests",
         admin_api_key="private-admin-key-for-tests-at-least-32-chars",
+        jwt_secret="private-jwt-secret-for-tests-at-least-32-chars",
+        otp_pepper="private-otp-pepper-for-tests-at-least-32-chars",
     )
     for text in (repr(config), config.model_dump_json()):
         assert "private-db-password-for-tests" not in text
@@ -24,4 +26,6 @@ def test_weak_or_placeholder_admin_keys_are_rejected(secret):
             _env_file=None,
             db_password="private-db-password-for-tests",
             admin_api_key=secret,
+            jwt_secret="private-jwt-secret-for-tests-at-least-32-chars",
+            otp_pepper="private-otp-pepper-for-tests-at-least-32-chars",
         )

@@ -1,4 +1,4 @@
-name: Phase 1 checks
+name: Phase 2 checks
 on: [push, pull_request]
 permissions:
   contents: read
@@ -19,6 +19,9 @@ jobs:
     env:
       DB_PASSWORD: ci-database-password-not-for-real-use
       ADMIN_API_KEY: ci-admin-key-not-for-real-use-minimum-32-chars
+      JWT_SECRET: ci-jwt-secret-not-for-real-use-minimum-32-characters
+      OTP_PEPPER: ci-otp-pepper-not-for-real-use-minimum-32-characters
+      EXPOSE_TEST_OTP: 'true'
     defaults:
       run:
         working-directory: backend
