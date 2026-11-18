@@ -21,6 +21,7 @@ bearer = HTTPBearer(auto_error=False)
 class Principal:
     role: str
     user: User | None
+    permissions: frozenset[str] = frozenset()
 
 
 def utc_now() -> datetime:
@@ -36,7 +37,12 @@ def hash_otp(phone: str, otp: str) -> str:
     return hmac.new(pepper, f"{phone}:{otp}".encode(), hashlib.sha256).hexdigest()
 
 
-def issue_token(role: str, user_id: int | None = None) -> str:
+def issue_token(
+    role: str,
+    user_id: int | None = None,
+    permissions: tuple[str, ...] = (),
+    ttl_minutes: int | None = None,
+) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
     payload = {
@@ -44,7 +50,8 @@ def issue_token(role: str, user_id: int | None = None) -> str:
         "role": role,
         "iss": "namma-ride-private-test",
         "iat": now,
-        "exp": now + timedelta(minutes=settings.jwt_ttl_minutes),
+        "exp": now + timedelta(minutes=ttl_minutes or settings.jwt_ttl_minutes),
+        "permissions": list(permissions),
     }
     return jwt.encode(
         payload, settings.jwt_secret.get_secret_value(), algorithm="HS256"
@@ -65,10 +72,11 @@ def current_principal(
             issuer="namma-ride-private-test",
         )
         role, subject = payload["role"], payload["sub"]
+        permissions = frozenset(payload.get("permissions", []))
     except (InvalidTokenError, KeyError):
         raise HTTPException(401, "Invalid or expired token") from None
     if role == "admin" and subject == "admin":
-        return Principal(role="admin", user=None)
+        return Principal(role="admin", user=None, permissions=permissions)
     user = db.get(User, int(subject)) if str(subject).isdigit() else None
     if user is None or user.role != role:
         raise HTTPException(401, "User no longer exists")
@@ -83,6 +91,15 @@ def require_role(*roles: str):
     def dependency(principal: Principal = Depends(current_principal)) -> Principal:
         if principal.role not in roles:
             raise HTTPException(403, "Role not permitted")
+        return principal
+
+    return dependency
+
+
+def require_permission(permission: str):
+    def dependency(principal: Principal = Depends(current_principal)) -> Principal:
+        if principal.role != "admin" or permission not in principal.permissions:
+            raise HTTPException(403, "Permission not granted")
         return principal
 
     return dependency

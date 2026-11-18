@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi.testclient import TestClient
+from otp_helpers import request_pilot_otp
 
 from app.config import get_settings
 from app.main import app
@@ -13,15 +14,13 @@ def register(role: str, phone: str, name: str, vehicle: str | None = None):
     payload = {"phone": phone, "role": role, "display_name": name}
     if vehicle:
         payload["vehicle_number"] = vehicle
-    requested = client.post("/api/v1/auth/otp/request", json=payload)
-    assert requested.status_code == 200
-    challenge = requested.json()
+    challenge, code = request_pilot_otp(client, payload)
     return client.post(
         "/api/v1/auth/otp/verify",
         json={
             "challenge_id": challenge["challenge_id"],
             "phone": phone,
-            "otp": challenge["test_otp"],
+            "otp": code,
         },
     ).json()
 

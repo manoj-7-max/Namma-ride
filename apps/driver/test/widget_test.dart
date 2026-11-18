@@ -18,7 +18,7 @@ void main() {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/otp/request')) {
         return http.Response(
-          jsonEncode({'challenge_id': 8, 'test_otp': '654321'}),
+          jsonEncode({'challenge_id': 8, 'expires_in_seconds': 300}),
           200,
         );
       }

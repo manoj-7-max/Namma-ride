@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from otp_helpers import request_pilot_otp
 
 from app.config import get_settings
 from app.main import app
@@ -10,15 +11,13 @@ def register(role: str, phone: str, name: str, vehicle: str | None = None):
     payload = {"phone": phone, "role": role, "display_name": name}
     if vehicle:
         payload["vehicle_number"] = vehicle
-    requested = client.post("/api/v1/auth/otp/request", json=payload)
-    assert requested.status_code == 200, requested.text
-    challenge = requested.json()
+    challenge, code = request_pilot_otp(client, payload)
     verified = client.post(
         "/api/v1/auth/otp/verify",
         json={
             "challenge_id": challenge["challenge_id"],
             "phone": phone,
-            "otp": challenge["test_otp"],
+            "otp": code,
         },
     )
     assert verified.status_code == 200, verified.text
@@ -39,10 +38,10 @@ def bearer(token: str):
 
 
 def test_otp_is_one_time_and_wrong_codes_are_rejected():
-    requested = client.post(
-        "/api/v1/auth/otp/request",
-        json={"phone": "9876543210", "role": "customer", "display_name": "Anbu"},
-    ).json()
+    requested, code = request_pilot_otp(
+        client,
+        {"phone": "9876543210", "role": "customer", "display_name": "Anbu"},
+    )
     wrong = client.post(
         "/api/v1/auth/otp/verify",
         json={
@@ -55,7 +54,7 @@ def test_otp_is_one_time_and_wrong_codes_are_rejected():
     good_payload = {
         "challenge_id": requested["challenge_id"],
         "phone": "9876543210",
-        "otp": requested["test_otp"],
+        "otp": code,
     }
     assert client.post("/api/v1/auth/otp/verify", json=good_payload).status_code == 200
     assert client.post("/api/v1/auth/otp/verify", json=good_payload).status_code == 400

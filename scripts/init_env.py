@@ -3,6 +3,7 @@
 
 import os
 import secrets
+from base64 import urlsafe_b64encode
 from pathlib import Path
 
 
@@ -14,6 +15,8 @@ def main():
         f"ADMIN_API_KEY={secrets.token_urlsafe(48)}\n"
         f"JWT_SECRET={secrets.token_urlsafe(48)}\n"
         f"OTP_PEPPER={secrets.token_urlsafe(48)}\n"
+        f"PILOT_OTP_ADMIN_API_KEY={secrets.token_urlsafe(48)}\n"
+        f"PILOT_OTP_ENCRYPTION_KEY={urlsafe_b64encode(os.urandom(32)).decode()}\n"
         "EXPOSE_TEST_OTP=false\n"
         "API_BIND_HOST=127.0.0.1\n"
     )

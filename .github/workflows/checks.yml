@@ -21,7 +21,9 @@ jobs:
       ADMIN_API_KEY: ci-admin-key-not-for-real-use-minimum-32-chars
       JWT_SECRET: ci-jwt-secret-not-for-real-use-minimum-32-characters
       OTP_PEPPER: ci-otp-pepper-not-for-real-use-minimum-32-characters
-      EXPOSE_TEST_OTP: 'true'
+      PILOT_OTP_ADMIN_API_KEY: ci-pilot-otp-admin-key-not-for-real-use-32-chars
+      PILOT_OTP_ENCRYPTION_KEY: vqpmAs4Ia5oeruKt4H384Mu8lxvy1inTjGu5w2CvhLw=
+      EXPOSE_TEST_OTP: 'false'
     defaults:
       run:
         working-directory: backend

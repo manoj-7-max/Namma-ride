@@ -114,9 +114,7 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
     final result = await api!.requestOtp(phone.text, name.text, vehicle.text);
     setState(() {
       challengeId = result['challenge_id'] as int;
-      message = result['test_otp'] == null
-          ? 'OTP requested. Ask the private-test operator for the code.'
-          : 'Test OTP: ${result['test_otp']}';
+      message = 'OTP requested. Ask the private-test operator for the code.';
     });
   });
 

@@ -67,6 +67,26 @@ class OTPChallenge(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
 
 
+class PilotOTPRecipient(Base):
+    __tablename__ = "pilot_otp_recipients"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    phone: Mapped[str] = mapped_column(String(13), unique=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
+
+
+class PilotOTPDelivery(Base):
+    __tablename__ = "pilot_otp_deliveries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    challenge_id: Mapped[int] = mapped_column(
+        ForeignKey("otp_challenges.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    encrypted_code: Mapped[str] = mapped_column(String(255))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(), index=True)
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), server_default=func.now())
+
+
 class Ride(Base):
     __tablename__ = "rides"
     __table_args__ = (

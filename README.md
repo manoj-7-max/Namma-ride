@@ -20,7 +20,7 @@ docker compose up -d --build
 curl http://localhost:8000/health/ready
 ```
 
-The initializer creates an owner-only, Git-ignored `.env` with random secrets. To display generated OTPs in a controlled local test only, set `EXPOSE_TEST_OTP=true` and recreate the API. Keep it false otherwise. API docs: `http://localhost:8000/docs`.
+The initializer creates an owner-only, Git-ignored `.env` with random secrets. `EXPOSE_TEST_OTP` must remain false; the public API never returns OTP values. Approved private-pilot testing uses the separately authorized [secure demo OTP workflow](docs/DEMO_OTP.md). API docs: `http://localhost:8000/docs`.
 
 Matching defaults to approved, available drivers within 8 km whose latest fix is at most 120 seconds old and at most 100 m accuracy. One current fix per driver is stored—no location trail. Offers expire after 30 seconds and retry the next nearest untried driver when a customer/driver polls. All values are configurable in `.env.example`.
 
@@ -68,7 +68,7 @@ python scripts/check_database.py
 alembic downgrade base && alembic upgrade head
 ```
 
-CI runs backend/PostgreSQL, Admin and both Flutter suites. The APK workflow embeds `https://api.manojbusinesssolutions.in`, runs mobile checks, and builds release-mode pilot APK artifacts. Until private signing is configured, Gradle deliberately uses the standard debug key; these are not Play Store or production-signed releases. See [architecture](docs/ARCHITECTURE.md), [phases](docs/PHASES.md), [completion report](docs/COMPLETION_REPORT.md) and [verification](docs/VERIFICATION.md).
+CI runs backend/PostgreSQL, Admin and both Flutter suites. The APK workflow embeds `https://api.manojbusinesssolutions.in`, runs mobile checks, and builds release-mode pilot APK artifacts. Until private signing is configured, Gradle deliberately uses the standard debug key; these are not Play Store or production-signed releases. See [architecture](docs/ARCHITECTURE.md), [phases](docs/PHASES.md), [secure demo OTP operations](docs/DEMO_OTP.md), [completion report](docs/COMPLETION_REPORT.md) and [verification](docs/VERIFICATION.md).
 
 ## Security boundary
 

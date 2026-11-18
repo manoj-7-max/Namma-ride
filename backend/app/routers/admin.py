@@ -1,18 +1,30 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.auth import Principal, require_role, utc_now
+from app.auth import Principal, require_permission, require_role, utc_now
 from app.config import get_settings
 from app.database import get_db
-from app.models import AuditLog, DriverLocation, Ride, RideEvent, User
+from app.models import (
+    AuditLog,
+    DriverLocation,
+    OTPChallenge,
+    PilotOTPDelivery,
+    PilotOTPRecipient,
+    Ride,
+    RideEvent,
+    User,
+)
+from app.pilot_otp import decrypt_otp
 from app.schemas import (
     ActiveUpdate,
     ApprovalUpdate,
     CustomerOut,
     DriverOut,
+    PilotOTPRecipientUpdate,
+    PilotOTPRetrieve,
     RideOut,
     SuspensionUpdate,
 )
@@ -37,6 +49,82 @@ def audit(
             detail=detail,
         )
     )
+
+
+@router.put("/pilot-otp/recipients")
+def set_pilot_otp_recipient(
+    payload: PilotOTPRecipientUpdate,
+    _: Principal = Depends(require_permission("pilot_otp:manage")),
+    db: Session = Depends(get_db),
+):
+    recipient = db.scalar(
+        select(PilotOTPRecipient).where(PilotOTPRecipient.phone == payload.phone)
+    )
+    if recipient is None:
+        recipient = PilotOTPRecipient(phone=payload.phone, active=payload.active)
+        db.add(recipient)
+        db.flush()
+    else:
+        recipient.active = payload.active
+    db.add(
+        AuditLog(
+            actor_role="pilot_otp_admin",
+            action="pilot_otp.recipient_changed",
+            target_type="pilot_otp_recipient",
+            target_id=recipient.id,
+            detail="active" if payload.active else "inactive",
+        )
+    )
+    db.commit()
+    return {"approved": recipient.active}
+
+
+@router.post("/pilot-otp/challenges/{challenge_id}/retrieve")
+def retrieve_pilot_otp(
+    challenge_id: int,
+    payload: PilotOTPRetrieve,
+    response: Response,
+    _: Principal = Depends(require_permission("pilot_otp:manage")),
+    db: Session = Depends(get_db),
+):
+    now = utc_now()
+    db.execute(delete(PilotOTPDelivery).where(PilotOTPDelivery.expires_at <= now))
+    delivery = db.scalar(
+        select(PilotOTPDelivery)
+        .join(OTPChallenge, OTPChallenge.id == PilotOTPDelivery.challenge_id)
+        .join(PilotOTPRecipient, PilotOTPRecipient.phone == OTPChallenge.phone)
+        .where(
+            PilotOTPDelivery.challenge_id == challenge_id,
+            OTPChallenge.phone == payload.phone,
+            OTPChallenge.consumed_at.is_(None),
+            PilotOTPRecipient.active.is_(True),
+            PilotOTPDelivery.retrieved_at.is_(None),
+            PilotOTPDelivery.expires_at > now,
+        )
+        .with_for_update()
+    )
+    if delivery is None:
+        db.commit()
+        raise HTTPException(404, "Active pilot OTP delivery not found")
+    try:
+        code = decrypt_otp(delivery.encrypted_code)
+    except ValueError:
+        db.rollback()
+        raise HTTPException(500, "Pilot OTP delivery unavailable") from None
+    delivery.retrieved_at = now
+    db.add(
+        AuditLog(
+            actor_role="pilot_otp_admin",
+            action="pilot_otp.retrieved",
+            target_type="otp_challenge",
+            target_id=challenge_id,
+            detail=None,
+        )
+    )
+    db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return {"otp": code, "expires_at": delivery.expires_at}
 
 
 @router.get("/summary")
