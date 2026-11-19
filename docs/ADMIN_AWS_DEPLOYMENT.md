@@ -29,7 +29,7 @@ Append only `namma_ride_admin_deploy.pub` to `/home/ubuntu/.ssh/authorized_keys`
 printf 'restrict %s\n' "$(cat namma_ride_admin_deploy.pub)" >> /home/ubuntu/.ssh/authorized_keys
 ```
 
-Put the private key into the GitHub Actions secret `EC2_SSH_KEY`. Never commit it or paste it into chat. Verify it from the trusted workstation before removing local working copies:
+Verify the key from the trusted workstation before removing local working copies:
 
 ```bash
 ssh -i ./namma_ride_admin_deploy -o IdentitiesOnly=yes ubuntu@13.211.28.222 true
@@ -42,7 +42,13 @@ grep -c 'namma-ride-github-actions' "$HOME/.ssh/authorized_keys"
 grep -c 'namma-ride-admin-deploy-2026-11' "$HOME/.ssh/authorized_keys"
 ```
 
-Expected output is `0` and `1`. Delete the new private key from EC2 if it was temporarily created there, but retain its public key and authorized-key entry.
+Expected output is `0` and `1`. Encode the private key as one line before putting it into GitHub; base64 is transport encoding, not encryption, so the value must still be stored only as the `EC2_SSH_KEY` secret:
+
+```bash
+base64 -w0 namma_ride_admin_deploy
+```
+
+Copy the one-line output directly into the secret. Never commit it or paste it into chat. Delete the new private key from EC2 if it was temporarily created there, but retain its public key and authorized-key entry.
 
 ## 2. Configure GitHub
 
@@ -50,7 +56,7 @@ Create the `production-admin` GitHub Environment and optionally require approval
 
 - `EC2_HOST`: `13.211.28.222`
 - `EC2_USER`: `ubuntu`
-- `EC2_SSH_KEY`: the complete new OpenSSH private key
+- `EC2_SSH_KEY`: preferably the single-line base64 encoding of the complete new OpenSSH private key; raw multiline OpenSSH format is also accepted
 - `EC2_SSH_HOST_KEY`: a pinned known-hosts line for the EC2 SSH host
 
 Obtain the host key through the trusted EC2 console, not `ssh-keyscan` over an unverified network:
