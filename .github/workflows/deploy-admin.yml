@@ -89,6 +89,7 @@ jobs:
           if [[ "$EC2_SSH_KEY" == -----BEGIN\ OPENSSH\ PRIVATE\ KEY-----* ]]; then
             printf '%s\n' "$EC2_SSH_KEY" > "$RUNNER_TEMP/ssh/deploy_key"
           elif ! printf '%s' "$EC2_SSH_KEY" \
+            | tr -d '\\[:space:]' \
             | base64 --decode > "$RUNNER_TEMP/ssh/deploy_key"; then
             echo 'EC2_SSH_KEY is neither an OpenSSH key nor valid base64.' >&2
             exit 1

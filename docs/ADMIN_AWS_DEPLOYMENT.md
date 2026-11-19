@@ -48,7 +48,7 @@ Expected output is `0` and `1`. Encode the private key as one line before puttin
 base64 -w0 namma_ride_admin_deploy
 ```
 
-Copy the one-line output directly into the secret. Never commit it or paste it into chat. Delete the new private key from EC2 if it was temporarily created there, but retain its public key and authorized-key entry.
+Copy the one-line output directly into the secret. The workflow tolerates whitespace and backslashes introduced by browser-terminal line wrapping, then validates the decoded OpenSSH key before connecting. Never commit it or paste it into chat. Delete the new private key from EC2 if it was temporarily created there, but retain its public key and authorized-key entry.
 
 ## 2. Configure GitHub
 
