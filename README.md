@@ -54,6 +54,8 @@ npm run dev
 
 Enter the local admin bootstrap key. It is exchanged for a JWT and kept only in memory. The dashboard shows approved/online state, last fix time, active matching/rides and recent dispatch failures. It omits driver coordinates and customer phone/name from operations responses.
 
+Production Admin deployment uses reviewed GitHub Actions releases and an atomic EC2 symlink switch. See [AWS Admin deployment](docs/ADMIN_AWS_DEPLOYMENT.md). Never reuse an exposed SSH key or commit deployment credentials.
+
 ## Checks
 
 ```bash

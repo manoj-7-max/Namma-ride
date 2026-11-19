@@ -1,0 +1,155 @@
+name: Deploy production Admin
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/admin/**'
+      - 'scripts/deploy_admin_remote.sh'
+      - '.github/workflows/deploy-admin.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-admin-deployment
+  cancel-in-progress: false
+
+env:
+  ADMIN_URL: 'https://adminnammaride.manojbusinesssolutions.in'
+  API_URL: ${{ vars.ADMIN_API_BASE_URL || 'https://api.manojbusinesssolutions.in' }}
+  VITE_API_BASE_URL: ${{ vars.ADMIN_API_BASE_URL || 'https://api.manojbusinesssolutions.in' }}
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy Admin
+    if: vars.ENABLE_ADMIN_DEPLOYMENT == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-admin
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/admin
+        run: npm ci
+
+      - name: Build production Admin
+        working-directory: apps/admin
+        run: npm run build
+
+      - name: Validate production build
+        run: |
+          set -Eeuo pipefail
+          case "$VITE_API_BASE_URL" in
+            https://*) ;;
+            *) echo 'VITE_API_BASE_URL must use HTTPS.' >&2; exit 1 ;;
+          esac
+          test -s apps/admin/dist/index.html
+          grep -Fq 'Namma Ride Admin' apps/admin/dist/index.html
+          if grep -R -Fq 'http://localhost:8000' apps/admin/dist; then
+            echo 'Production build contains the development API URL.' >&2
+            exit 1
+          fi
+
+      - name: Upload Admin build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: namma-ride-admin-production-${{ github.sha }}
+          path: apps/admin/dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create deployment archive
+        run: tar -C apps/admin/dist -czf "$RUNNER_TEMP/namma-ride-admin.tar.gz" .
+
+      - name: Configure verified SSH access
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_SSH_HOST_KEY: ${{ secrets.EC2_SSH_HOST_KEY }}
+        run: |
+          set -Eeuo pipefail
+          for required in EC2_HOST EC2_USER EC2_SSH_KEY EC2_SSH_HOST_KEY; do
+            if [ -z "${!required:-}" ]; then
+              echo "Required GitHub secret $required is not configured." >&2
+              exit 1
+            fi
+          done
+          install -d -m 700 "$RUNNER_TEMP/ssh"
+          install -m 600 /dev/null "$RUNNER_TEMP/ssh/deploy_key"
+          printf '%s\n' "$EC2_SSH_KEY" > "$RUNNER_TEMP/ssh/deploy_key"
+          printf '%s\n' "$EC2_SSH_HOST_KEY" > "$RUNNER_TEMP/ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/ssh/known_hosts"
+          ssh-keygen -F "$EC2_HOST" -f "$RUNNER_TEMP/ssh/known_hosts" >/dev/null || {
+            echo 'EC2_SSH_HOST_KEY does not contain a key for EC2_HOST.' >&2
+            exit 1
+          }
+          ssh-keygen -y -f "$RUNNER_TEMP/ssh/deploy_key" >/dev/null
+
+      - name: Verify dedicated deployment key
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i "$RUNNER_TEMP/ssh/deploy_key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" \
+            "$EC2_USER@$EC2_HOST" 'test -w /var/www/namma-ride-admin/releases'
+
+      - name: Upload release archive
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          scp -i "$RUNNER_TEMP/ssh/deploy_key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" \
+            "$RUNNER_TEMP/namma-ride-admin.tar.gz" \
+            "$EC2_USER@$EC2_HOST:/tmp/namma-ride-admin-${GITHUB_SHA}.tar.gz"
+
+      - name: Atomically activate release
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i "$RUNNER_TEMP/ssh/deploy_key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" \
+            "$EC2_USER@$EC2_HOST" \
+            'bash -s --' "$GITHUB_SHA" "/tmp/namma-ride-admin-${GITHUB_SHA}.tar.gz" \
+            < scripts/deploy_admin_remote.sh
+
+      - name: Verify HTTPS, assets, SPA fallback, API and CORS
+        run: |
+          set -Eeuo pipefail
+          index_file="$RUNNER_TEMP/admin-index.html"
+          curl --fail --silent --show-error --retry 6 --retry-all-errors \
+            --retry-delay 5 "$ADMIN_URL/" -o "$index_file"
+          grep -Fq 'Namma Ride Admin' "$index_file"
+          while IFS= read -r asset; do
+            curl --fail --silent --show-error "$ADMIN_URL$asset" -o /dev/null
+          done < <(grep -Eo '/assets/[^" ]+\.(js|css)' "$index_file" | sort -u)
+          curl --fail --silent --show-error "$ADMIN_URL/operations" \
+            | grep -Fq 'Namma Ride Admin'
+          curl --fail --silent --show-error "$API_URL/health/ready" \
+            | grep -Fq 'ready'
+          cors_headers="$RUNNER_TEMP/cors-headers"
+          curl --fail --silent --show-error -D "$cors_headers" -o /dev/null \
+            -X OPTIONS "$API_URL/api/v1/auth/admin-token" \
+            -H "Origin: $ADMIN_URL" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: x-admin-key,content-type'
+          tr -d '\r' < "$cors_headers" \
+            | grep -Fqi "access-control-allow-origin: $ADMIN_URL"
